@@ -44,9 +44,9 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh);
     MyMesh::Point               midpoint;       //Midpoint in case optimal solution fails
 //-----------------------------------------------------------------------------------------
     int i;
-    bool init = false;                          //Was the error already calculated once? 
+    bool init = false;                          //Will be set to TRUE when everything is initialized
     double threshold = 0.002;                   //Threshold for connecting not connected vertices
-    double mem[4];
+    double mem[4];                              //Matrix multiplication memory
     int rankA, rankAb;                          //Ranks of matrices; check if they are solvable
 //-----------------------------------------------------------------------------------------
     MyMesh::Point               vvv;            //Handle point and Resulting vertex
