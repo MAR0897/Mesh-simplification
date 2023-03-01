@@ -1,4 +1,3 @@
-#Muj program, cmake moc nefunguje
 CPP_FILES = main.cpp
 
 program: ${CPP_FILES}
