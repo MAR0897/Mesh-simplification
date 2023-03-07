@@ -196,9 +196,7 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh){
         for(int j = 3; j<4; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, vh1).q[j*4+k] + mesh.property(Q, vh2).q[j*4+k];//plug the rest of the numbers to the error Q matrix (Q=Q1+Q2)
         if(!init) eh_arr.push_back(eh);
     //add error property
-        mesh.property(e, eh) = 0.0;
-        for(int j = 0; j<4; j++) for(int k = 0; k<4; k++) mem[j] += v_coords[k]*V(k,j);//matrix multiplication
-        for(int j = 0; j<4; j++) mesh.property(e, eh) += mem[j]*v_coords[j];//matrix multiplication part 2
+        mesh.property(e, eh) = as_scalar(v_coords.t()*V*v_coords);
     //add ideal_v_coords property
         for(int j = 0; j<3; j++) mesh.property(C, eh).v[j] = v_coords(j,0);
 }
