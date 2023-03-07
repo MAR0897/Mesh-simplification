@@ -255,9 +255,7 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh){
         for(int j = 0; j<3; j++) mesh.property(C, eh).v[j] = v_coords(j,0);
     //Calculate error and add it as an edge property
         for(int j = 3; j<4; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, vh1).q[j*4+k] + mesh.property(Q, vh2).q[j*4+k];//plug the rest of the numbers to the error Q matrix (Q=Q1+Q2)
-        mesh.property(e, eh) = 0.0;
-        for(int j = 0; j<4; j++) for(int k = 0; k<4; k++) mem[j] += v_coords[k]*V(k,j);//matrix multiplication
-        for(int j = 0; j<4; j++) mesh.property(e, eh) += mem[j]*v_coords[j];//matrix multiplication part 2    
+        mesh.property(e, eh) = as_scalar(v_coords.t()*V*v_coords);   
 }
 //The same function but for unconnected vertices
 void uv_calc_error_and_vcoords(MyMesh &mesh, Unconnected_vertices &u_vertex, MyMesh::VertexHandle v1, MyMesh::VertexHandle v2){
@@ -277,9 +275,7 @@ void uv_calc_error_and_vcoords(MyMesh &mesh, Unconnected_vertices &u_vertex, MyM
         for(int j = 0; j<3; j++) u_vertex.v[j] = v_coords(j,0);
     //Calculate error and add it as an edge property
         for(int j = 3; j<4; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, v1).q[j*4+k] + mesh.property(Q, v2).q[j*4+k];//plug the rest of the numbers to the error Q matrix (Q=Q1+Q2)
-        for(int j = 0; j<4; j++) for(int k = 0; k<4; k++) mem[j] += v_coords[k]*V(k,j);//matrix multiplication
-        for(int j = 0; j<4; j++) temp += mem[j]*v_coords[j];//matrix multiplication part 2 
-        u_vertex.error = temp;
+        u_vertex.error = as_scalar(v_coords.t()*V*v_coords);
         
 }
 void collapse_edge_only(MyMesh &mesh, MyMesh::HalfedgeHandle hh){
