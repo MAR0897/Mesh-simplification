@@ -15,7 +15,7 @@
 //#include <OpenMesh/Core/Mesh/PolyConnectivity.hh>
 //------------------------------------------------------------------------------------------------------------
 using namespace OpenMesh;
-using namespace arma; //Petr Pavel reference
+using namespace arma;
 struct MyTraits : public OpenMesh::DefaultTraits{
 };
 typedef TriMesh_ArrayKernelT<MyTraits>  MyMesh;
@@ -67,8 +67,9 @@ void uv_calc_error_and_vcoords(MyMesh &mesh, Unconnected_vertices &u_vertex, MyM
     EPropHandleT<v_ideal_coords>    C;                  //Optimal coords for vertex v
 //Armadillo----------------------------------------------------------------------------------------------------
     mat V(4, 4, fill::zeros);                           //Matrix for finding perfect spot for vertex v
-    mat vektor(4,1, fill::zeros);                       //Vector [0,0,0,1]
+    mat pomocny_vektor(4, 1, fill::zeros);              //Vector [0,0,0,1]
     mat v_coords(4,1, fill::zeros);                     //Coordinates for the perfect spot for vertex v
+
 
 //============================================================================================================================================================
 //============================================================================================================================================================
@@ -76,7 +77,7 @@ int main(int argv, char **argc){//  ./main [number of vertices to delete] [thres
 auto start = std::chrono::high_resolution_clock::now();
 
     threshold = atof(argc[2]);
-    vektor(3,0) = 1;
+    pomocny_vektor(3,0) = 1;
     std::ofstream myfile; //Temporary file check
     std::vector<Unconnected_vertices> uv;
     MyMesh mesh; if(!IO::read_mesh(mesh, "bunny.obj")) {std::cerr << "read error\n";exit(1);}       //Declare a triangular mesh object
@@ -101,7 +102,7 @@ auto start = std::chrono::high_resolution_clock::now();
                         Unconnected_vertices u_vertex;
                         uv_calc_error_and_vcoords(mesh, u_vertex, *v_it, *v_it2);
                         //heh = mesh.new_edge(*v_it, *v_it2);
-                        //U kralika threshold 0.01 vytvori celkem 18000 edgu (z toho 7500 je real)
+                        //U kralika threshold 0.01 vytvori celkem ~18000 edgu (z toho ~7500 je real)
                         uv.push_back(u_vertex);
                     }
                 }
@@ -114,6 +115,7 @@ auto start = std::chrono::high_resolution_clock::now();
         std::sort(eh_arr.begin(), eh_arr.end(), [&](MyMesh::EdgeHandle eh1, MyMesh::EdgeHandle eh2) {return mesh.property(e, eh1) < mesh.property(e, eh2);});
         init = true;
 
+
 time(start);
 //INIT DONE        
 //============================================================================================================================================================  
@@ -124,8 +126,10 @@ time(start);
         auto uv_it = std::min_element(uv.begin(), uv.end(), [](const Unconnected_vertices &a, const Unconnected_vertices &b) {return a.error < b.error;});
         eh = *std::min_element(eh_arr.begin(), eh_arr.end(), [&mesh](const MyMesh::EdgeHandle &eh_min1, const MyMesh::EdgeHandle &eh_min2) {
                     return mesh.property(e, eh_min1) < mesh.property(e, eh_min2);});
-        //Compare connected and unconnected vertices 
-        if(mesh.property(e, eh) < uv_it->error){//CONNECTED VERTICES
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------
+    //CONNECTED VERTICES
+        if(mesh.property(e, eh) < uv_it->error){//Compare connected and unconnected vertices
             heh = mesh.halfedge_handle(eh, 0);
             //Assign ideal coords     
             for (int j = 0; j<3; j++) v_ideal_point[j] = mesh.property(C, eh).v[j];
@@ -144,7 +148,9 @@ time(start);
                     for (ve_it = mesh.ve_iter(*vv_it); ve_it.is_valid(); ++ve_it) if(!mesh.status(*ve_it).deleted()) {
                         calc_error_and_vcoords(mesh, *ve_it);}}}
 
-        }else{//UNCONNECTED VERTICES
+//------------------------------------------------------------------------------------------------------------------------------------------------------------
+    //UNCONNECTED VERTICES
+        }else{
             heh = mesh.new_edge(uv_it->uv1, uv_it->uv2);          
 /*MOZNA ZBYTECNE*/eh = mesh.edge_handle(heh);
 /*MOZNA ZBYTECNE*/heh = mesh.halfedge_handle(eh, 0);
@@ -159,18 +165,15 @@ time(start);
             mesh.delete_edge(eh);
             //Remove items marked as "deleted"
             mesh.garbage_collection();
-        //Recalculate error and ideal coords------------------------------------------------------------------------------------------
+        //Recalculate error and ideal coords
             if (mesh.is_valid_handle(vh)) {
-                std::cout<<"ahojda"<<std::endl;
-                calc_Q(mesh, vh); 
-                std::cout<<"ahojda"<<std::endl;     
+                calc_Q(mesh, vh);     
                 for (vv_it = mesh.vv_iter(vh); vv_it.is_valid(); ++vv_it) if(mesh.is_valid_handle(*vv_it)) {
                     calc_Q(mesh, *vv_it);
                     for (ve_it = mesh.ve_iter(*vv_it); ve_it.is_valid(); ++ve_it) if(!mesh.status(*ve_it).deleted()) {
                         calc_error_and_vcoords(mesh, *ve_it);
                     }
                 }
-                std::cout<<"ahojda"<<std::endl;
                 v_end = mesh.vertices_end();
                 for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it){
                     if (mesh.find_halfedge(*v_it, vh) == MyMesh::HalfedgeHandle()) {
@@ -181,10 +184,9 @@ time(start);
                         }
                     }
                 }
-                std::cout<<"ahojda"<<std::endl;
             }
         }
-                
+    //std::cout<<"ahojda"<<std::endl;            
     time(start);
     }         
 //===========================================================================================================================================================
@@ -245,8 +247,8 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh){
         for(int j = 0; j<3; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, vh1).q[j*4+k] + mesh.property(Q, vh2).q[j*4+k];
         V(3,0) = 0; V(3,1) = 0; V(3,2) = 0; V(3,3) = 1;
         rankA = rank(V);
-        rankAb = rank(join_rows(V, vektor));
-        if (rankA == rankAb) v_coords = solve(V,vektor/*,solve_opts::no_approx*/);
+        rankAb = rank(join_rows(V, pomocny_vektor));
+        if (rankA == rankAb) v_coords = solve(V,pomocny_vektor/*,solve_opts::no_approx*/);
         else{
             midpoint = (mesh.point(vh1) + mesh.point(vh2)) / 2.0f;
             for (int j = 0; j<3; j++) v_coords(j,0) = midpoint[j];}
@@ -267,8 +269,8 @@ void uv_calc_error_and_vcoords(MyMesh &mesh, Unconnected_vertices &u_vertex, MyM
         for(int j = 0; j<3; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, v1).q[j*4+k] + mesh.property(Q, v2).q[j*4+k];
         V(3,0) = 0; V(3,1) = 0; V(3,2) = 0; V(3,3) = 1;
         rankA = rank(V);
-        rankAb = rank(join_rows(V, vektor));
-        if (rankA == rankAb) v_coords = solve(V,vektor/*,solve_opts::no_approx*/);
+        rankAb = rank(join_rows(V, pomocny_vektor));
+        if (rankA == rankAb) v_coords = solve(V,pomocny_vektor/*,solve_opts::no_approx*/);
         else{
             midpoint = (mesh.point(v1) + mesh.point(v2)) / 2.0f;
             for (int j = 0; j<3; j++) v_coords(j,0) = midpoint[j];}
@@ -281,35 +283,35 @@ void uv_calc_error_and_vcoords(MyMesh &mesh, Unconnected_vertices &u_vertex, MyM
         
 }
 void collapse_edge_only(MyMesh &mesh, MyMesh::HalfedgeHandle hh){
-  MyMesh::HalfedgeHandle  h  = hh;
-  MyMesh::HalfedgeHandle  hn = mesh.next_halfedge_handle(h);
-  MyMesh::HalfedgeHandle  hp = mesh.prev_halfedge_handle(h);
-  MyMesh::HalfedgeHandle  o  = mesh.opposite_halfedge_handle(h);
-  MyMesh::HalfedgeHandle  on = mesh.next_halfedge_handle(o);
-  MyMesh::HalfedgeHandle  op = mesh.prev_halfedge_handle(o);
-  MyMesh::FaceHandle      fh = mesh.face_handle(h);
-  MyMesh::FaceHandle      fo = mesh.face_handle(o);
-  MyMesh::VertexHandle    vh = mesh.to_vertex_handle(h);
-  MyMesh::VertexHandle    vo = mesh.to_vertex_handle(o);
-  // halfedge -> vertex
-  for (MyMesh::VertexIHalfedgeIter vih_it(mesh.vih_iter(vo)); vih_it.is_valid(); ++vih_it)
-    mesh.set_vertex_handle(*vih_it, vh);
-  // halfedge -> halfedge
-  mesh.set_next_halfedge_handle(hp, hn);
-  mesh.set_next_halfedge_handle(op, on);
-  // face -> halfedge
-  if (fh.is_valid())  mesh.set_halfedge_handle(fh, hn);
-  if (fo.is_valid())  mesh.set_halfedge_handle(fo, on);
-  // vertex -> halfedge
-  if (mesh.halfedge_handle(vh) == o)  mesh.set_halfedge_handle(vh, hn);
-  mesh.adjust_outgoing_halfedge(vh);
-  mesh.set_isolated(vo);
-  // delete stuff
-  mesh.status(mesh.edge_handle(h)).set_deleted(false);
-  mesh.status(vo).set_deleted(false);
-  if (mesh.has_halfedge_status()){
-    mesh.status(h).set_deleted(false);
-    mesh.status(o).set_deleted(false);}
+    MyMesh::HalfedgeHandle  h  = hh;
+    MyMesh::HalfedgeHandle  hn = mesh.next_halfedge_handle(h);
+    MyMesh::HalfedgeHandle  hp = mesh.prev_halfedge_handle(h);
+    MyMesh::HalfedgeHandle  o  = mesh.opposite_halfedge_handle(h);
+    MyMesh::HalfedgeHandle  on = mesh.next_halfedge_handle(o);
+    MyMesh::HalfedgeHandle  op = mesh.prev_halfedge_handle(o);
+    MyMesh::FaceHandle      fh = mesh.face_handle(h);
+    MyMesh::FaceHandle      fo = mesh.face_handle(o);
+    MyMesh::VertexHandle    vh = mesh.to_vertex_handle(h);
+    MyMesh::VertexHandle    vo = mesh.to_vertex_handle(o);
+    // halfedge -> vertex
+    for (MyMesh::VertexIHalfedgeIter vih_it(mesh.vih_iter(vo)); vih_it.is_valid(); ++vih_it)
+        mesh.set_vertex_handle(*vih_it, vh);
+    // halfedge -> halfedge
+    mesh.set_next_halfedge_handle(hp, hn);
+    mesh.set_next_halfedge_handle(op, on);
+    // face -> halfedge
+    if (fh.is_valid())  mesh.set_halfedge_handle(fh, hn);
+    if (fo.is_valid())  mesh.set_halfedge_handle(fo, on);
+    // vertex -> halfedge
+    if (mesh.halfedge_handle(vh) == o)  mesh.set_halfedge_handle(vh, hn);
+    mesh.adjust_outgoing_halfedge(vh);
+    mesh.set_isolated(vo);
+    // delete stuff
+    mesh.status(mesh.edge_handle(h)).set_deleted(false);
+    mesh.status(vo).set_deleted(false);
+    if (mesh.has_halfedge_status()){
+        mesh.status(h).set_deleted(false);
+        mesh.status(o).set_deleted(false);}
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------
 //Sort only changed values of the eh_arr to save time//NEFUNGUJE, ALE JE TO COOL NAPAD
