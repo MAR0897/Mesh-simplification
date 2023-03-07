@@ -314,28 +314,6 @@ void collapse_edge_only(MyMesh &mesh, MyMesh::HalfedgeHandle hh){
         mesh.status(o).set_deleted(false);}
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------
-//Sort only changed values of the eh_arr to save time//NEFUNGUJE, ALE JE TO COOL NAPAD
-/*
-void partial_sort(std::vector<MyMesh::EdgeHandle> &vec, const std::set<MyMesh::EdgeHandle> &changed_indices) {
-        std::vector<MyMesh::EdgeHandle> temp;
-        temp.reserve(changed_indices.size());
-    //Extract the changed elements from the original vector
-        for (const auto &edge_handle : changed_indices) {
-            auto it = std::find(vec.begin(), vec.end(), edge_handle);
-            if (it != vec.end()) temp.push_back(*it);}
-    //Sort the changed elements
-        std::sort(temp.begin(), temp.end(), [](const MyMesh::EdgeHandle &a, const MyMesh::EdgeHandle &b) {return a.idx() < b.idx();});
-    //Replace the changed elements in the original vector
-        size_t j = 0;
-        for (const auto &edge_handle : changed_indices) {
-            auto it = std::find(vec.begin(), vec.end(), edge_handle);
-            if (it != vec.end()) *it = temp[j++];}
-    //Merge the partially sorted vector with the rest of the vector
-        std::vector<MyMesh::EdgeHandle>::iterator it = vec.begin();
-        for (const auto &edge_handle : changed_indices) {it = std::find(it, vec.end(), edge_handle); if (it == vec.end()) {break;}++it;}
-        std::inplace_merge(vec.begin(), it, vec.end(), [](const MyMesh::EdgeHandle &a, const MyMesh::EdgeHandle &b) {return a.idx() < b.idx();});
-}*/
-
 /*myfile.open ("vcoords.txt");
         for (int m = 0; m<eh_arr.size(); m++) myfile << mesh.property(C, eh_arr[m]).v[0] <<"\t" <<mesh.property(C, eh_arr[m]).v[1]<<"\t"<< 
         mesh.property(C, eh_arr[m]).v[2]<< std::endl;
