@@ -49,7 +49,7 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh);
     double mem[4];                              //Matrix multiplication memory
     int rankA, rankAb;                          //Ranks of matrices; check if they are solvable
 //-----------------------------------------------------------------------------------------
-    MyMesh::Point               vvv;            //Handle point and Resulting vertex
+    MyMesh::Point               v_ideal_point;  //Handle point and Resulting vertex
     MyMesh::VertexIter          v_it, v_end;    //Vertex iterator
     MyMesh::EdgeIter            e_it, e_end;    //Edge iterator
     MyMesh::VertexVertexIter    vv_it;          //Adjacent vertices of a vertex
@@ -66,7 +66,7 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh);
 
 //Armadillo---------------------------------------------------------------------------------
     mat V(4, 4, fill::zeros);                   //Matrix for finding perfect spot for vertex v
-    mat vektor(4,1, fill::zeros);               //Vector [0,0,0,1]
+    mat pomocny_vektor(4,1, fill::zeros);       //Vector [0,0,0,1]
     mat v_coords(4,1, fill::zeros);             //Coordinates for the perfect spot for vertex v
 
 
@@ -75,7 +75,7 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh);
 int main(int argv, char **argc){
 auto start = std::chrono::high_resolution_clock::now();
 
-    vektor(3,0) = 1;
+    pomocny_vektor(3,0) = 1;
     std::ofstream myfile; //Temporary file check
     MyMesh mesh; if(!IO::read_mesh(mesh, "bunny.obj")) {std::cerr << "read error\n";exit(1);}       //Declare a triangular mesh object
     mesh.request_face_status();mesh.request_edge_status();mesh.request_vertex_status();             //Enable deleting objects
@@ -112,9 +112,9 @@ auto start = std::chrono::high_resolution_clock::now();
     //Get its halfedge
         he = mesh.halfedge_handle(eh, 0);
     //Assign ideal coords    
-        for (int j = 0; j<3; j++) vvv[j] = mesh.property(C, eh).v[j];
+        for (int j = 0; j<3; j++) v_ideal_point[j] = mesh.property(C, eh).v[j];
     //Collapse
-        v1 = mesh.to_vertex_handle(he); mesh.set_point(v1, vvv); mesh.collapse(he);
+        v1 = mesh.to_vertex_handle(he); mesh.set_point(v1, v_ideal_point); mesh.collapse(he);
     //Remove items marked as "deleted"   
         mesh.garbage_collection();
     //Erase from vector
@@ -186,8 +186,8 @@ void calc_error_and_vcoords(MyMesh &mesh, MyMesh::EdgeHandle eh){
         for(int j = 0; j<3; j++) for(int k = 0; k<4; k++) V(j,k) = mesh.property(Q, vh1).q[j*4+k] + mesh.property(Q, vh2).q[j*4+k];
         V(3,0) = 0; V(3,1) = 0; V(3,2) = 0; V(3,3) = 1;
         rankA = rank(V);
-        rankAb = rank(join_rows(V, vektor));
-        if (rankA == rankAb) v_coords = solve(V,vektor/*,solve_opts::no_approx*/);
+        rankAb = rank(join_rows(V, pomocny_vektor));
+        if (rankA == rankAb) v_coords = solve(V,pomocny_vektor/*,solve_opts::no_approx*/);
         else{
             midpoint = (mesh.point(vh1) + mesh.point(vh2)) / 2.0f;
             for (int j = 0; j<3; j++) v_coords(j,0) = midpoint[j];
