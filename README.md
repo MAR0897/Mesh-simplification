@@ -3,4 +3,10 @@
 Spuštění:\
 cmake .\
 make\
-./main [path-to-input-obj-file] [path-to-output-obj-file] [number-of-vertices-to-be-deleted-aka-simplified]
+./main [input_file_path] [output_file_path] [number_of_vertices_to_be_simplified] [decimator_mode]\
+\
+## Decimator mode
+1 = OpenMesh inbuilt quadric decimator\
+2 = moje implementace (to same akorat s locked edges a pomalejsi)
+
+
