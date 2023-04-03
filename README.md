@@ -1,6 +1,6 @@
 # Mesh-simplification
 
-Spuštění:\
+##Spuštění:
 cmake .\
 make\
 ./main [input_file_path] [output_file_path] [number_of_vertices_to_be_simplified] [decimator_mode]\
