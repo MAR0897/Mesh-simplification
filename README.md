@@ -7,6 +7,6 @@ make\
 
 ## Decimator mode
 1 = OpenMesh inbuilt quadric decimator\
-2 = moje implementace (to same akorat s locked edges a pomalejsi)
+2 = moje implementace (to samé akorát s locked edges a o hodně pomalejší)
 
 
