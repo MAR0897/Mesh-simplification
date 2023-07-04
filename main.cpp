@@ -24,27 +24,20 @@ int main(int argv, const char **argc){//./main -i input_file_path -o output_file
     //input_path = "../objfiles/octahedron.obj";
     //output_path = "../objfiles/octahedronout.obj";
     //number_of_vertices = 1;
-
-    std::cout << "Input path = " << input_path << ", Output path = " << output_path << ", Number of vertices = " << number_of_vertices << "\n";
         
     auto start = std::chrono::high_resolution_clock::now();
 
     MeshWrap m(input_path, output_path);
-    std::cout << "Mesh successfully loaded into memory" << std::endl;
-
-
-    //m.lock_boundary_edges();
-    //std::cout<<"Edges locked"<<std::endl;
+    std::cout << "Mesh successfully loaded into memory" << std::endl; m.time(start);
+    std::cout<<"========================="<<std::endl;
     m.initialize();
     std::cout << "Mesh successfully initialized error on all edges" << std::endl; m.time(start);
-    m.write();
     std::cout<<"========================="<<std::endl;
-    
 
-    for (int kek = 0; kek<number_of_vertices; kek++){
-        m.simplify(1);
-        m.time(start);
-    }
-    
+    m.write();
+
+    m.simplify(number_of_vertices);
+    std::cout<<"Mesh was successfully simplified"<<std::endl; m.time(start);
+    std::cout<<"========================="<<std::endl;
 
 return 0;}

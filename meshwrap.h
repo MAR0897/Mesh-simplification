@@ -17,8 +17,8 @@
 #include <OpenMesh/Core/System/config.h>
 #include <OpenMesh/Core/Mesh/Status.hh>
 #include <OpenMesh/Core/Mesh/Attributes.hh>
-#include <OpenMesh/Tools/Decimater/DecimaterT.hh>
-#include <OpenMesh/Tools/Decimater/ModQuadricT.hh>
+//#include <OpenMesh/Tools/Decimater/DecimaterT.hh>
+//#include <OpenMesh/Tools/Decimater/ModQuadricT.hh>
 //-----------------------------------------------------------------------------------------
 using namespace OpenMesh;
 using namespace Eigen;
@@ -28,26 +28,26 @@ struct MyTraits : public OpenMesh::DefaultTraits{
 typedef TriMesh_ArrayKernelT<MyTraits>  MyMesh;
 
 
-
 class MeshWrap{
     public:
         MyMesh mesh;
     public:
-        MeshWrap(const std::string& in, const std::string& out);
-        ~MeshWrap();
-        void initialize();
-        void simplify(int n);
-        void collapse_edge(MyMesh::EdgeHandle eh);
-        void lock_boundary_edges();
-        void recalculate_constraints_and_error();
+        MeshWrap(const std::string& in, const std::string& out);    //Load mesh and activate mesh status, normals and properties
+        ~MeshWrap();                                                //Output mesh into a designated file, deactivate mesh status, normals and properties
+        void initialize();                                          //Initialize error and constraints on all edges of the mesh                    
+        void simplify(int n);                                       //Decimate the mesh n-times (as specified in the input parameters)
+        void collapse_edge(MyMesh::EdgeHandle eh);                  //Collapse one edge and delete it from the edge handle vector
+        void recalculate_constraints_and_error();                   //Recalculates for all edges adjacent to vertices adjacent to the result collapsed vertex
+        void lock_boundary_edges();                                 //Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex DOES NOT WORK
         void write();
         void write_c(MyMesh::EdgeHandle eh);
 
-        //for constraints calculation
-        void get_constraints_and_error(MyMesh::EdgeHandle eh);
-        bool is_alpha_compatible(MyMesh::EdgeHandle eh, Vector3d constraint);
-        void add_constraint(MyMesh::EdgeHandle eh, Vector3d constraint, double b);
-        void calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessian, Vector3d c);
+        void get_constraints_and_error(MyMesh::EdgeHandle eh);                                  //Computes the constraits (result vertex coords) and error of the edge
+        bool is_alpha_compatible(MyMesh::EdgeHandle eh, Vector3d constraint);                   //Checks if to-be-added constraint is alpha compatible
+        void add_constraint(MyMesh::EdgeHandle eh, Vector3d constraint, double b);              //Adds constraint to the system
+        void calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessian, Vector3d c);   //Calculates remaining constraints if there are less than 3
+
+        double determinant3x3(const Matrix3d& mat);
     private:
         int timestamp = 0;                  //Time measuring
         bool init = false;                  //Whether the error is initialized on all edges
@@ -57,7 +57,7 @@ class MeshWrap{
         
         MyMesh::Normal              face_normal;
         MyMesh::Point               p, p0, p1;          //points for vertex coords storage
-        MyMesh::Point               v_ideal_point;      //Handle point and Resulting vertex
+        MyMesh::Point               v_ideal_point;      //Handle point for final collapsed vertex
         MyMesh::VertexIter          v_it, v_end;        //Vertex iterator
         MyMesh::EdgeIter            e_it, e_end;        //Edge iterator
         MyMesh::HalfedgeIter        he_it,he_end;       //Halfedge iterator
@@ -65,13 +65,11 @@ class MeshWrap{
         MyMesh::VertexEdgeIter      ve_it, ve_it_recalc;//Adjacent edge of a vertex
         MyMesh::VertexFaceIter      vf_it;              //Adjacent faces of a vertex
         MyMesh::FaceVertexIter      fv_it;              //Adjacent vertices of a face
-
         MyMesh::VertexHandle        vh1, vh2, vh;       //Vertex v1 to which v2 will collapse
         MyMesh::FaceHandle          fh1, fh2;           //Face handles
         MyMesh::EdgeHandle          eh, eh1, eh2;       //Edge handles
         MyMesh::HalfedgeHandle      heh;                //Halfedge handle
         std::vector<MyMesh::EdgeHandle>  eh_arr;        //Edge handle to store the error
-
 
         //Properties
         struct v_ideal_coords {Vector3d v = Vector3d::Zero(3);};
@@ -88,8 +86,43 @@ class MeshWrap{
         Vector3d temp2 = Vector3d::Zero(3);         //temporary vector storage because cross function fails to resize
         Vector3d temp3 = Vector3d::Zero(3);         //temporary vector storage because cross function fails to resize
 
+        //General
+        Vector3d constraint = Vector3d::Zero(3);    //a - constraint
+        double bside = 0;                           //b - right side number
+        std::set<MyMesh::FaceHandle> face_handles;      //set of face handles (to avoid repeating calculations)
+        std::set<MyMesh::VertexHandle> vertex_handles;  //set of vertex handles (to avoid repeating calculations)
 
-        
+        //Volume preservation
+        double face_area;                           //face area storage
+        double determinant;                         //face determinant storage
+        Vector3d normal = Vector3d::Zero(3);        //face normal coords storage
+        MatrixXd v_coords = MatrixXd::Zero(3,3);    //matrix for vertex coordinates to compute determinant
+
+        //Volume, boundary optimization
+        MatrixXd Hv = MatrixXd::Zero(3,3);          //Hessian for volume optimization
+        MatrixXd Hb = MatrixXd::Zero(3,3);          //Hessian for boundary optimization
+        MatrixXd Hs = MatrixXd::Zero(3,3);          //Hessian for triangle shape optimization
+        Vector3d cv = Vector3d::Zero(3);            //for volume optimizaton
+        Vector3d cb = Vector3d::Zero(3);            //for boundary optimization
+        Vector3d cs = Vector3d::Zero(3);            //for triangle shape optimization
+        double kv = 0;                              //constants in volume optimization
+        double kb = 0;                              //constants in boundary optimization
+        int i = 0;
+
+        //Boundary preservation, optimization
+        MatrixXd E1 = MatrixXd::Zero(3,3);          //e1 for every vertex
+        MatrixXd E2 = MatrixXd::Zero(3,3);          //e2 for every vertex
+        MatrixXd e1x = MatrixXd::Zero(3,3);         //e1x matrix for boundary optimization
+        Vector3d e1 = Vector3d::Zero(3);            //summed E1
+        Vector3d e2 = Vector3d::Zero(3);            //summed E2
+        Vector3d e3 = Vector3d::Zero(3);            //cross product of e1 and e2
+        Vector3d v0 = Vector3d::Zero(3);            //vertex coords storage
+        Vector3d v1 = Vector3d::Zero(3);            //second vertex coords storage
+
+        //Final error calculation
+        double fv = 0;                              //volume objective functions (the resulting error)
+        double fb = 0;                              //area objective functions (the resulting error)
+        Vector3d V = Vector3d::Zero(3);             //final vertex
 
     public://time measurement
         std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();

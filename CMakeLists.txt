@@ -3,7 +3,7 @@ project(my_project)
 
 set(CMAKE_CXX_STANDARD 11)
 set(PROGRAM_NAME main)
-set(CPP_FILES main.cpp meshwrap.cpp calcConstraints.cpp)
+set(CPP_FILES main.cpp meshwrap.cpp constraints.cpp)
 
 add_executable(${PROGRAM_NAME} ${CPP_FILES})
 
