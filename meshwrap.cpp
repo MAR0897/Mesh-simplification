@@ -80,7 +80,7 @@ void MeshWrap::recalculate_constraints_and_error() {
 }
 
 
-//DOES NOT WORK Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex 
+//Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex 
 void MeshWrap::lock_boundary_edges(){
     for (he_it = mesh.halfedges_begin(); he_it != mesh.halfedges_end(); ++he_it) if(mesh.is_boundary(*he_it)) {
         vh1 = mesh.to_vertex_handle(*he_it);
