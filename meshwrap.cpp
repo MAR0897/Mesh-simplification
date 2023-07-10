@@ -38,7 +38,7 @@ void MeshWrap::simplify(int n){
         heh = mesh.halfedge_handle(eh, 0);                                                  //Get its halfedge
         vh1 = mesh.from_vertex_handle(heh);
         vh2 = mesh.to_vertex_handle(heh);
-        if((mesh.is_boundary(vh1) xor mesh.is_boundary(vh2)) and (mesh.property(e, eh) == 0 and mesh.property(v, eh).v(0) == 0
+        if(((mesh.is_boundary(vh1) xor mesh.is_boundary(vh2)) or mesh.property(is_locked, eh)) and (mesh.property(e, eh) == 0 and mesh.property(v, eh).v(0) == 0
          and mesh.property(v, eh).v(1) == 0 and mesh.property(v, eh).v(2) == 0)) {          //If somehow the edge error and constraints are broken
             it--;                                                                           //  -decrement the number of vertices simplified
             eh_arr.erase(std::find(eh_arr.begin(), eh_arr.end(), eh));                      //  -erase the edge from edge handle vector

@@ -25,6 +25,8 @@ int main(int argv, const char **argc){//./main -i input_file_path -o output_file
     MeshWrap m(input_path, output_path);
     std::cout << "Mesh successfully loaded into memory" << std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
+    //m.lock_boundary_edges();
+
     m.initialize();
     std::cout << "Mesh successfully initialized error on all edges" << std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
