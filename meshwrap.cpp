@@ -11,6 +11,7 @@ MeshWrap::MeshWrap(const std::string& in, const std::string& out){
     for (e_it = mesh.edges_begin(); e_it != mesh.edges_end(); ++e_it) mesh.property(is_locked, *e_it) = false;
 }
 
+
 //Output mesh into a designated file, deactivate mesh status, normals and properties
 MeshWrap::~MeshWrap(){
     if (!IO::write_mesh(mesh, this->output_path)) {std::cerr << "write error\n";exit(1);}   //Write to file
@@ -20,16 +21,14 @@ MeshWrap::~MeshWrap(){
     mesh.remove_property(b); mesh.remove_property(v); mesh.remove_property(is_locked);      
 }
 
+
 //Initialize error and constraints on all edges of the mesh 
 void MeshWrap::initialize(){
-
-
-
-
     e_end = mesh.edges_end();                                                                   //Set the edge iterator end
     for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) get_constraints_and_error(*e_it);    //For every edge get the constraints and the error
     init = true;    //Set variable "init" to true, so that no more edges can get into the edge handle vector
 }
+
 
 //Decimate the mesh n-times (as specified in the input parameters)
 void MeshWrap::simplify(int n){
@@ -51,6 +50,7 @@ void MeshWrap::simplify(int n){
     }
 }
 
+
 //Collapse one edge and delete it from the edge handle vector
 void MeshWrap::collapse_edge(MyMesh::EdgeHandle eh){
     heh = mesh.halfedge_handle(eh, 0);                                      //Get its halfedge
@@ -63,6 +63,7 @@ void MeshWrap::collapse_edge(MyMesh::EdgeHandle eh){
     eh_arr.erase(std::remove_if(eh_arr.begin(), eh_arr.end(),               //Erase from vector of edge handles
     [&](MyMesh::EdgeHandle eh) {return !mesh.is_valid_handle(eh);}), eh_arr.end());
 }
+
 
 //Recalculates for all edges adjacent to vertices adjacent to the result collapsed vertex
 void MeshWrap::recalculate_constraints_and_error() {
@@ -78,7 +79,8 @@ void MeshWrap::recalculate_constraints_and_error() {
     edge_handles_set.clear();
 }
 
-//Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex DOES NOT WORK
+
+//DOES NOT WORK Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex 
 void MeshWrap::lock_boundary_edges(){
     for (he_it = mesh.halfedges_begin(); he_it != mesh.halfedges_end(); ++he_it) if(mesh.is_boundary(*he_it)) {
         vh1 = mesh.to_vertex_handle(*he_it);
@@ -96,8 +98,6 @@ void MeshWrap::time(std::chrono::time_point<std::chrono::high_resolution_clock> 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
     std::cout << "The code part #" << timestamp++ << " took " << duration.count() << " milliseconds to run." << std::endl;
 }
-
-
 void MeshWrap::write(){
     std::sort(eh_arr.begin(), eh_arr.end(), [&](MyMesh::EdgeHandle eh1, MyMesh::EdgeHandle eh2) {
     return mesh.property(e, eh1) < mesh.property(e, eh2);});
@@ -106,7 +106,6 @@ void MeshWrap::write(){
                      << "\t" << mesh.property(v, eh).v(1) << "\t" << mesh.property(v, eh).v(2) << "\n";
     outfile.close();
 }
-
 void MeshWrap::write_c(MyMesh::EdgeHandle eh){
     std::ofstream outfile2("output_c.txt", std::ios::app);
     outfile2 << mesh.property(b, eh).b << "\n" << mesh.property(a, eh).c << "\n\n\n";

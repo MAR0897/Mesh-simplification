@@ -19,11 +19,6 @@ int main(int argv, const char **argc){//./main -i input_file_path -o output_file
     auto result = cli.parse({argv, argc});
     if (show_help) {std::cout << cli << std::endl;return 0;}
     if (!result){std::cerr << "Error in command line: " << result.message() << std::endl;return 1;}
-
-    //temp for debugging
-    //input_path = "../objfiles/octahedron.obj";
-    //output_path = "../objfiles/octahedronout.obj";
-    //number_of_vertices = 1;
         
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -33,9 +28,6 @@ int main(int argv, const char **argc){//./main -i input_file_path -o output_file
     m.initialize();
     std::cout << "Mesh successfully initialized error on all edges" << std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
-
-    m.write();
-
     m.simplify(number_of_vertices);
     std::cout<<"Mesh was successfully simplified"<<std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
