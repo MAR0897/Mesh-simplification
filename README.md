@@ -8,7 +8,7 @@ make\
 třeba:\
 ./main -i objfiles/bunny.obj -o objfiles/bunnyout.obj -n 200
 
-## Test 1 (1000/2500 hran)
+## Test 1 (1000/2500 vrcholu)
 - Mesh successfully loaded into memory
 - The code part #0 took 135 milliseconds to run.
 - Mesh successfully initialized error on all edges 
@@ -21,7 +21,7 @@ třeba:\
 - Cas vnejsiho cyklu rekalkulovani erroru u sousednich hran: 21933
 - Cas pouze vnitrni funkce rekalkulovani erroru: 217
 
-## Test 2 (2000/2500 hran)
+## Test 2 (2000/2500 vrcholu)
 - Mesh successfully loaded into memory
 - The code part #0 took 148 milliseconds to run.
 - Mesh successfully initialized error on all edges
@@ -34,7 +34,7 @@ třeba:\
 - Cas vnejsiho cyklu rekalkulovani erroru u sousednich hran: 47692
 - Cas pouze vnitrni funkce rekalkulovani erroru: 2268
 
-## Test 3 (2400/2500 hran)
+## Test 3 (2400/2500 vrcholu)
 - Mesh successfully loaded into memory
 - The code part #0 took 158 milliseconds to run.
 - Mesh successfully initialized error on all edges
