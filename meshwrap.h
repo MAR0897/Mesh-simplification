@@ -48,7 +48,9 @@ class MeshWrap{
         void calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessian, Vector3d c);   //Calculates remaining constraints if there are less than 3
 
         double determinant3x3(const Matrix3d& mat);
+        int prumer = 0;
     private:
+        
         int timestamp = 0;                  //Time measuring
         bool init = false;                  //Whether the error is initialized on all edges
         double alpha = 0.01745329251;       //angle, to which all planes are taken as coplanar (kind of)
@@ -70,6 +72,7 @@ class MeshWrap{
         MyMesh::EdgeHandle          eh, eh1, eh2;       //Edge handles
         MyMesh::HalfedgeHandle      heh;                //Halfedge handle
         std::vector<MyMesh::EdgeHandle>  eh_arr;        //Edge handle to store the error
+        std::set<MyMesh::EdgeHandle> edge_handles_set; 
 
         //Properties
         struct v_ideal_coords {Vector3d v = Vector3d::Zero(3);};
@@ -127,4 +130,9 @@ class MeshWrap{
     public://time measurement
         std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
         void time(std::chrono::time_point<std::chrono::high_resolution_clock> start);
+        double cas = 0.0;
+        double cas_collapse = 0.0;
+        double cas_simp = 0.0;
+        double cas_recalc = 0.0;
+        double cas_inner = 0.0;
 };

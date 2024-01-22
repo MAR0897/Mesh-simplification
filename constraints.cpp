@@ -2,7 +2,7 @@
 
 //Computes the constraits (result vertex coords) and error of the edge
 void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
-
+auto nastart = std::chrono::high_resolution_clock::now();
     //Take those edges, which are not locked
     if(!mesh.property(is_locked, eh)){
         heh = mesh.halfedge_handle(eh, 0);          
@@ -51,7 +51,7 @@ void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
                     face_normal = mesh.calc_face_normal(face_handle);
                     face_area = mesh.calc_face_area(face_handle);
                     face_normal = face_normal*2*face_area;
-                    Vector3d normal(face_normal[0], face_normal[1], face_normal[2]);
+                    normal = Vector3d(face_normal[0], face_normal[1], face_normal[2]);
                     constraint += normal;
                     //get the determinant of the face and compute the first bside
                     for (i = 0, fv_it = mesh.fv_iter(face_handle); fv_it.is_valid(); ++fv_it, i++) {
@@ -64,14 +64,15 @@ void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
                     //Volume optimization section
                     Hv += normal*normal.transpose();
                     cv -= determinant*normal.transpose();
-                    kv += std::pow(determinant,2);
+                    kv += determinant*determinant;
                 }
             }
             if(is_alpha_compatible(eh, constraint)) add_constraint(eh, constraint, bside);
 
+
 //------------------------------------------------------------------------------------------------------------------------------
         //Boundary preservation
-            if(mesh.is_boundary(eh)){
+            if(mesh.is_boundary(vh1) or mesh.is_boundary(vh2)){
                 //get all needed handles
                 MyMesh::EdgeHandle* boundary_edges = new MyMesh::EdgeHandle[3];
                 heh = mesh.halfedge_handle(eh, 1); 
@@ -123,7 +124,7 @@ void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
         
 //----------------------------------------------------------------------------------------------------------------------
         //Boundary optimization
-            if(mesh.is_boundary(eh) and mesh.property(n, eh) != 3) calc_remaining_constraints(eh, Hb, cb);
+            if((mesh.is_boundary(vh1) or mesh.is_boundary(vh2)) and mesh.property(n, eh) != 3) calc_remaining_constraints(eh, Hb, cb);
 
 //----------------------------------------------------------------------------------------------------------------------
         //Apply triangle shape opt. if necessary
@@ -150,13 +151,13 @@ void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
                 //calculate volume optimization error
                     fv = (V.transpose()*(Hv*V)).value() + 2*(cv.transpose()*V).value() + kv;
                 //calculate final error
-                    if(mesh.is_boundary(eh)){//use full formula
+                    if(mesh.is_boundary(vh1) or mesh.is_boundary(vh2)){//use full formula
                         fb = 9*((V.transpose()*(Hb*V)).value() + 2*(cb.transpose()*V).value() + kb);
                         p0 = mesh.point(vh1);
                         p1 = mesh.point(vh2);
                         double length = (p1-p0).norm();
                         //std::cout<<Hv<<" "<<cb<<" "<<kb<<std::endl;
-                        mesh.property(e, eh) = lambda*fv + (1-lambda)*std::pow(length,2)*fb;
+                        mesh.property(e, eh) = lambda*fv + (1-lambda)*length*length*fb;
                     }
                     else mesh.property(e, eh) = lambda*fv;
                 //and push back to the vector of edges
@@ -164,6 +165,9 @@ void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
             }
         }
     }
+    auto nastop = std::chrono::high_resolution_clock::now();
+            auto naduration = std::chrono::duration_cast<std::chrono::milliseconds>(nastop - nastart);
+            cas += naduration.count();
 }
 //==================================================================================================================================================
 //Checks if to-be-added constraint is alpha compatible

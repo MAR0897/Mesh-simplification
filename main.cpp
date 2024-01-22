@@ -27,11 +27,21 @@ int main(int argv, const char **argc){//./main -i input_file_path -o output_file
     std::cout<<"========================="<<std::endl;
     //m.lock_boundary_edges();
 
+
     m.initialize();
     std::cout << "Mesh successfully initialized error on all edges" << std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
+
+    //m.write();
+
     m.simplify(number_of_vertices);
     std::cout<<"Mesh was successfully simplified"<<std::endl; m.time(start);
     std::cout<<"========================="<<std::endl;
+    std::cout<<"Cas funkce get_constraints_and_error: "<<m.cas<<std::endl;
+    std::cout<<"Cas funkce collapse_edge: "<<m.cas_collapse<<std::endl;
+    std::cout<<"Cas vybirani hrany na kolaps: "<<m.cas_simp<<std::endl;
+    std::cout<<"Cas vnejsiho cyklu rekalkulovani erroru u sousednich hran: "<<m.cas_recalc<<std::endl;
+    std::cout<<"Cas pouze vnitrni funkce rekalkulovani erroru: "<<m.cas_inner<<std::endl;
+    std::cout<<m.prumer/number_of_vertices<<std::endl;
 
 return 0;}

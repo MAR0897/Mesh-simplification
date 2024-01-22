@@ -33,20 +33,30 @@ void MeshWrap::initialize(){
 //Decimate the mesh n-times (as specified in the input parameters)
 void MeshWrap::simplify(int n){
     for (int it = 0; it<n; it++){                                                           //Iterate n-times (number_of_vertices parameter)
+auto start_cas_simp = std::chrono::high_resolution_clock::now();
         eh = *std::min_element(eh_arr.begin(), eh_arr.end(), [this](const MyMesh::EdgeHandle& eh_min1, const MyMesh::EdgeHandle& eh_min2) {
             return this->mesh.property(e, eh_min1) < this->mesh.property(e, eh_min2);});    //Find the edge with minimal error
         heh = mesh.halfedge_handle(eh, 0);                                                  //Get its halfedge
         vh1 = mesh.from_vertex_handle(heh);
         vh2 = mesh.to_vertex_handle(heh);
+auto stop_cas_simp = std::chrono::high_resolution_clock::now();
+auto dur_simp = std::chrono::duration_cast<std::chrono::milliseconds>(stop_cas_simp - start_cas_simp);
+cas_simp += dur_simp.count();
+
         if(((mesh.is_boundary(vh1) xor mesh.is_boundary(vh2)) or mesh.property(is_locked, eh)) and (mesh.property(e, eh) == 0 and mesh.property(v, eh).v(0) == 0
          and mesh.property(v, eh).v(1) == 0 and mesh.property(v, eh).v(2) == 0)) {          //If somehow the edge error and constraints are broken
             it--;                                                                           //  -decrement the number of vertices simplified
             eh_arr.erase(std::find(eh_arr.begin(), eh_arr.end(), eh));                      //  -erase the edge from edge handle vector
         }
         else {                                                                              //If all is OK
+            auto start_cas_collapse = std::chrono::high_resolution_clock::now();
             collapse_edge(eh);                                                              //  -collapse the edge
+            auto stop_cas_collapse = std::chrono::high_resolution_clock::now();
+            auto dur_collapse = std::chrono::duration_cast<std::chrono::milliseconds>(stop_cas_collapse- start_cas_collapse);
+            cas_collapse += dur_collapse.count();
             recalculate_constraints_and_error();                                            //  -recalculate the constrants and error where needed
         }
+        //write();
     }
 }
 
@@ -67,7 +77,7 @@ void MeshWrap::collapse_edge(MyMesh::EdgeHandle eh){
 
 //Recalculates for all edges adjacent to vertices adjacent to the result collapsed vertex
 void MeshWrap::recalculate_constraints_and_error() {
-    std::set<MyMesh::EdgeHandle> edge_handles_set;                          //Create a set of edge handles and fill it with those, which need to recalculate their error
+    //std::set<MyMesh::EdgeHandle> edge_handles_set;                          //Create a set of edge handles and fill it with those, which need to recalculate their error
     if (mesh.is_valid_handle(vh1)) {  
         for (vv_it_recalc = mesh.vv_iter(vh1); vv_it_recalc.is_valid(); ++vv_it_recalc) if (mesh.is_valid_handle(*vv_it_recalc)) { 
             for (ve_it_recalc = mesh.ve_iter(*vv_it_recalc); ve_it_recalc.is_valid(); ++ve_it_recalc) if (!mesh.status(*ve_it_recalc).deleted()) { 
@@ -75,12 +85,24 @@ void MeshWrap::recalculate_constraints_and_error() {
             }
         }
     }
-    for (const auto& edge_handle : edge_handles_set) get_constraints_and_error(edge_handle); //Recalculate the error
+auto start_cas_recalc = std::chrono::high_resolution_clock::now();
+    prumer += edge_handles_set.size();
+    for (const auto& edge_handle : edge_handles_set) {
+        auto start_cas_inner = std::chrono::high_resolution_clock::now();
+        get_constraints_and_error(edge_handle); //Recalculate the error
+        auto stop_cas_inner = std::chrono::high_resolution_clock::now();
+        auto dur_inner= std::chrono::duration_cast<std::chrono::milliseconds>(stop_cas_inner - start_cas_inner);
+        cas_inner+= dur_inner.count();
+    }
+auto stop_cas_recalc = std::chrono::high_resolution_clock::now();
+auto dur_recalc = std::chrono::duration_cast<std::chrono::milliseconds>(stop_cas_recalc - start_cas_recalc);
+cas_recalc+= dur_recalc.count();
     edge_handles_set.clear();
+    
 }
 
 
-//Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex 
+//DOES NOT WORK Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex 
 void MeshWrap::lock_boundary_edges(){
     for (he_it = mesh.halfedges_begin(); he_it != mesh.halfedges_end(); ++he_it) if(mesh.is_boundary(*he_it)) {
         vh1 = mesh.to_vertex_handle(*he_it);
