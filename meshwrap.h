@@ -1,30 +1,13 @@
 #pragma once
 
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <chrono>
-#include <set>
-#include <algorithm>
-#include <cmath>
-#include <eigen3/Eigen/Core>
-#include <eigen3/Eigen/Dense>
-#include <cstdlib>
-#include "lyra.hpp"
-// ---------------------OpenMesh-----------------------------------------------------------
-#include <OpenMesh/Core/IO/MeshIO.hh>
-#include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
-#include <OpenMesh/Core/System/config.h>
-#include <OpenMesh/Core/Mesh/Status.hh>
-#include <OpenMesh/Core/Mesh/Attributes.hh>
-//#include <OpenMesh/Tools/Decimater/DecimaterT.hh>
-//#include <OpenMesh/Tools/Decimater/ModQuadricT.hh>
-//-----------------------------------------------------------------------------------------
+#include "pch.h"
+
 using namespace OpenMesh;
 using namespace Eigen;
 struct MyTraits : public OpenMesh::DefaultTraits{
     VertexAttributes(OpenMesh::Attributes::Status);
 };
+
 typedef TriMesh_ArrayKernelT<MyTraits>  MyMesh;
 
 
@@ -49,13 +32,17 @@ class MeshWrap{
 
         double determinant3x3(const Matrix3d& mat);
         int prumer = 0;
+        int not_locked_eh = 0;
+        int klklk = 0;
     private:
         
-        int timestamp = 0;                  //Time measuring
-        bool init = false;                  //Whether the error is initialized on all edges
-        double alpha = 0.01745329251;       //angle, to which all planes are taken as coplanar (kind of)
-        double lambda = 0.5;                //overall edge error equation constant variable
-        std::string output_path;
+        int timestamp = 0;                          //Time measuring
+        bool init = false;                          //Whether the error is initialized on all edges
+        double alpha = 0.01745329251;               //angle, to which all planes are taken as coplanar (kind of)
+        double SINALPHA2 = sin(alpha)*sin(alpha);   //predefined value for faster computations (=sin(alpha)*sin(alpha))
+        double COSALPHA2 = cos(alpha)*cos(alpha);   //predefined value for faster computations (=cos(alpha)*cos(alpha))
+        double lambda = 0.5;                        //overall edge error equation constant variable
+        std::string output_path;                    //output path for OpenMesh to output an .obj file to desired place
         
         MyMesh::Normal              face_normal;
         MyMesh::Point               p, p0, p1;          //points for vertex coords storage
@@ -101,7 +88,7 @@ class MeshWrap{
         Vector3d normal = Vector3d::Zero(3);        //face normal coords storage
         MatrixXd v_coords = MatrixXd::Zero(3,3);    //matrix for vertex coordinates to compute determinant
 
-        //Volume, boundary optimization
+        //Volume, boundary, shape optimization
         MatrixXd Hv = MatrixXd::Zero(3,3);          //Hessian for volume optimization
         MatrixXd Hb = MatrixXd::Zero(3,3);          //Hessian for boundary optimization
         MatrixXd Hs = MatrixXd::Zero(3,3);          //Hessian for triangle shape optimization
@@ -110,6 +97,9 @@ class MeshWrap{
         Vector3d cs = Vector3d::Zero(3);            //for triangle shape optimization
         double kv = 0;                              //constants in volume optimization
         double kb = 0;                              //constants in boundary optimization
+        double ks = 0;                              //constants in triangle shape optimizaion
+        Vector3d tri_shape = Vector3d::Zero(3);     //vector for storing vertex coords in triangle shape optimization
+        MatrixXd I = MatrixXd::Identity(3,3);       //identity matrix for triangle shape optimization
         int i = 0;
 
         //Boundary preservation, optimization
@@ -123,15 +113,15 @@ class MeshWrap{
         Vector3d v1 = Vector3d::Zero(3);            //second vertex coords storage
 
         //Final error calculation
-        double fv = 0;                              //volume objective functions (the resulting error)
-        double fb = 0;                              //area objective functions (the resulting error)
+        double fv = 0;                              //volume objective functions (volume optimization) (the resulting error)
+        double fb = 0;                              //area objective functions (boundary optimization) (the resulting error)
+        double fs = 0;                              //triangle shape optimization (the resulting error)
         Vector3d V = Vector3d::Zero(3);             //final vertex
 
     public://time measurement
         std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
         void time(std::chrono::time_point<std::chrono::high_resolution_clock> start);
         double cas = 0.0;
-        double cas_collapse = 0.0;
         double cas_simp = 0.0;
         double cas_recalc = 0.0;
         double cas_inner = 0.0;
