@@ -10,7 +10,6 @@ struct MyTraits : public OpenMesh::DefaultTraits{
 
 typedef TriMesh_ArrayKernelT<MyTraits>  MyMesh;
 
-
 class MeshWrap{
     public:
         MyMesh mesh;
@@ -19,24 +18,21 @@ class MeshWrap{
         ~MeshWrap();                                                //Output mesh into a designated file, deactivate mesh status, normals and properties
         void initialize();                                          //Initialize error and constraints on all edges of the mesh                    
         void simplify(int n);                                       //Decimate the mesh n-times (as specified in the input parameters)
-        void collapse_edge(MyMesh::EdgeHandle eh);                  //Collapse one edge and delete it from the edge handle vector
+        void collapse_edge(MyMesh::EdgeHandle& eh);                  //Collapse one edge and delete it from the edge handle vector
         void recalculate_constraints_and_error();                   //Recalculates for all edges adjacent to vertices adjacent to the result collapsed vertex
         void lock_boundary_edges();                                 //Sets the "is_locked" edge property to true if edge has exactly 1 boundary vertex DOES NOT WORK
         void write();
-        void write_c(MyMesh::EdgeHandle eh);
+        void write_c(const MyMesh::EdgeHandle& eh);
 
-        void get_constraints_and_error(MyMesh::EdgeHandle eh);                                  //Computes the constraits (result vertex coords) and error of the edge
-        bool is_alpha_compatible(MyMesh::EdgeHandle eh, Vector3d constraint);                   //Checks if to-be-added constraint is alpha compatible
-        void add_constraint(MyMesh::EdgeHandle eh, Vector3d constraint, double b);              //Adds constraint to the system
-        void calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessian, Vector3d c);   //Calculates remaining constraints if there are less than 3
+        void get_constraints_and_error(const MyMesh::EdgeHandle& eh);                                  //Computes the constraits (result vertex coords) and error of the edge
+        bool is_alpha_compatible(const MyMesh::EdgeHandle& eh, const Vector3d& constraint);                   //Checks if to-be-added constraint is alpha compatible
+        void add_constraint(const MyMesh::EdgeHandle& eh, const Vector3d& constraint, double& b);              //Adds constraint to the system
+        void calc_remaining_constraints(const MyMesh::EdgeHandle& eh, MatrixXd& Hessian, Vector3d& c);   //Calculates remaining constraints if there are less than 3
 
         double determinant3x3(const Matrix3d& mat);
-        int prumer = 0;
-        int not_locked_eh = 0;
-        int klklk = 0;
+        Matrix3d inverse3x3(const Matrix3d& m);
+
     private:
-        
-        int timestamp = 0;                          //Time measuring
         bool init = false;                          //Whether the error is initialized on all edges
         double alpha = 0.01745329251;               //angle, to which all planes are taken as coplanar (kind of)
         double SINALPHA2 = sin(alpha)*sin(alpha);   //predefined value for faster computations (=sin(alpha)*sin(alpha))
@@ -118,11 +114,5 @@ class MeshWrap{
         double fs = 0;                              //triangle shape optimization (the resulting error)
         Vector3d V = Vector3d::Zero(3);             //final vertex
 
-    public://time measurement
-        std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-        void time(std::chrono::time_point<std::chrono::high_resolution_clock> start);
-        double cas = 0.0;
-        double cas_simp = 0.0;
-        double cas_recalc = 0.0;
-        double cas_inner = 0.0;
 };
+

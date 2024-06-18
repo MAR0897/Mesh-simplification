@@ -1,10 +1,11 @@
 #include "meshwrap.h"
 
 //Computes the constraits (result vertex coords) and error of the edge
-void MeshWrap::get_constraints_and_error(MyMesh::EdgeHandle eh){
-auto nastart = std::chrono::high_resolution_clock::now();
+void MeshWrap::get_constraints_and_error(const MyMesh::EdgeHandle& eh){
+
     //Take those edges, which are not locked
     if(!mesh.property(is_locked, eh)){
+        
         heh = mesh.halfedge_handle(eh, 0);          
         vh1 = mesh.to_vertex_handle(heh);           
         vh2 = mesh.from_vertex_handle(heh);
@@ -12,8 +13,10 @@ auto nastart = std::chrono::high_resolution_clock::now();
         //set variables to zero
         i = 0;                      //iterator
         mesh.property(n, eh) = 0;   //set number of constraints acquired
+
         constraint.setZero();       //a - constraint
         bside = 0;                  //b - right side number
+
         face_handles.clear();       //set of face handles (to avoid repeating calculations)
         vertex_handles.clear();     //set of vertex handles (to avoid repeating calculations)
         normal.setZero();           //face normal coords storage
@@ -36,6 +39,7 @@ auto nastart = std::chrono::high_resolution_clock::now();
         e3.setZero();               //cross product of e1 and e2
         v0.setZero();               //vertex coords storage
         v1.setZero();               //second vertex coords storage
+
         fv = 0;                     //volume objective functions (the resulting error)
         fb = 0;                     //area objective functions (the resulting error)
         fs = 0;                     //triangle shape optimization (the resulting error)
@@ -48,20 +52,22 @@ auto nastart = std::chrono::high_resolution_clock::now();
         //calc constraint
         for (const auto& face_handle : face_handles) {
             if(mesh.is_valid_handle(face_handle)){
-                //compute face normal (should be magnitude 2x the area of the face) and the first constraint
-                face_normal = mesh.calc_face_normal(face_handle);
-                face_area = mesh.calc_face_area(face_handle);
-                face_normal = face_normal*2*face_area;
-                normal = Vector3d(face_normal[0], face_normal[1], face_normal[2]);
-                constraint += normal;
+    
                 //get the determinant of the face and compute the first bside
-                for (i = 0, fv_it = mesh.fv_iter(face_handle); fv_it.is_valid(); ++fv_it, i++) {
+                for (i = 0, fv_it = mesh.fv_iter(face_handle); fv_it.is_valid(); ++fv_it, ++i) {
                     p = mesh.point(*fv_it);
                     v_coords.col(i) = Vector3d(p[0], p[1], p[2]);
                 }
-                determinant = determinant3x3(v_coords);
-                bside += determinant;
-
+            
+                auto s22 = std::chrono::high_resolution_clock::now();
+                Vector3d AB = v_coords.col(1)-v_coords.col(0);
+                Vector3d AC = v_coords.col(2)-v_coords.col(0);
+                Vector3d crossp = AB.cross(AC);
+                constraint += crossp;
+                normal = crossp;
+                determinant = v_coords.col(0).dot(crossp);
+                bside+=determinant;
+                
                 //Volume optimization section
                 Hv += normal*normal.transpose();
                 cv -= determinant*normal.transpose();
@@ -71,21 +77,19 @@ auto nastart = std::chrono::high_resolution_clock::now();
         }
         if(is_alpha_compatible(eh, constraint)) add_constraint(eh, constraint, bside);
 
-
 //------------------------------------------------------------------------------------------------------------------------------
     //Boundary preservation
         if(mesh.is_boundary(vh1) or mesh.is_boundary(vh2)){
             //get all needed handles
-            MyMesh::EdgeHandle* boundary_edges = new MyMesh::EdgeHandle[3];
+            std::vector<MyMesh::EdgeHandle> boundary_edges(3);
             heh = mesh.halfedge_handle(eh, 1); 
             eh1 = mesh.edge_handle(mesh.next_halfedge_handle(heh));
             eh2 = mesh.edge_handle(mesh.prev_halfedge_handle(heh));
             boundary_edges[0] = eh1; boundary_edges[1] = eh2; boundary_edges[2] = eh;
 
             //calculate E1 and E2
-            for (int i = 0; i<3; i++) {
-                eh = boundary_edges[i];
-                heh = mesh.halfedge_handle(eh, 0);          
+            for (int i = 0; i<3; ++i) {
+                heh = mesh.halfedge_handle(boundary_edges[i], 0);          
                 vh1 = mesh.to_vertex_handle(heh);           
                 vh2 = mesh.from_vertex_handle(heh);
                 p0 = mesh.point(vh1);
@@ -93,10 +97,10 @@ auto nastart = std::chrono::high_resolution_clock::now();
                 for (int j = 0; j<3; j++) {v0(j) = p0[j]; v1(j) = p1[j];}
                 E1.col(i) = v1-v0;
                 E2.col(i) = v1.cross(v0);
+                e1 += E1.col(i);
+                e2 += E2.col(i);
             }
-            for (int i = 0; i<3; i++) {e1 += E1.col(i); e2 += E2.col(i);}   //sum up E1 and E2
             e3 = e1.cross(e2);
-            delete[] boundary_edges;
 
             //equation 7
             constraint = (e1.transpose()*e1)*e3.transpose();
@@ -153,85 +157,70 @@ auto nastart = std::chrono::high_resolution_clock::now();
         if(mesh.property(n, eh) == 3){
             //get final vertex position
                 mesh.property(v, eh).v = (mesh.property(a, eh).c.transpose()).colPivHouseholderQr().solve(mesh.property(b, eh).b);
+                //mesh.property(v, eh).v = inverse3x3(mesh.property(a, eh).c)*mesh.property(b, eh).b;
                 V = mesh.property(v, eh).v;
-            //calculate volume optimization error
-                //rescale to match the equation (9)
+        
+            //rescale to match the equation (9)
                 Hv *= 1.0/18.0;
                 cv *= 1.0/18.0;
                 kv *= 1.0/18.0;
-                //rescale to match the equation (10)
+            //rescale to match the equation (10)
                 Hb *= 0.5;
                 cb *= 0.5;
                 kb *= 0.5;
-                //rescale to match the equation (11)
-                Hs *= 2.0;
-                cs *= 2.0;
-                ks *= 2.0;
-
-                fv = (0.5*(V.transpose()*(Hv*V)).value() + (cv.transpose()*V).value() + 0.5*kv);//0.5*(V.transpose()*(Hv*V)).value() + (cv.transpose()*V).value() + 0.5*kv;
-                fb = (0.5*(V.transpose()*(Hb*V)).value() + (cb.transpose()*V).value() + 0.5*kb);//0.5*(V.transpose()*(Hb*V)).value() + (cb.transpose()*V).value() + 0.5*kb;
-                fs = (0.5*(V.transpose()*(Hs*V)).value() + (cs.transpose()*V).value() + 0.5*ks);
+                
+            //compute volume and boundary cost
+                fv = (0.5*(V.transpose()*(Hv*V)).value() + (cv.transpose()*V).value() + 0.5*kv);
+                fb = (0.5*(V.transpose()*(Hb*V)).value() + (cb.transpose()*V).value() + 0.5*kb);
+                
             //calculate final error
                 p0 = mesh.point(vh1);
                 p1 = mesh.point(vh2);
                 double length = (p1-p0).norm();
                 mesh.property(e, eh) = lambda*fv +                      //volume opt
-                                        (1-lambda)*length*length*fb; +    //boundary opt
-                                        lambda*std::pow(length, 4)*fs;   //triangle shape opt
+                                        (1-lambda)*length*length*fb;    //boundary opt
+                                        //lambda*std::pow(length, 4)*fs;  //triangle shape opt
             //and push back to the vector of edges
-                if(!init) {eh_arr.push_back(eh);not_locked_eh++;}
-                //if (init) std::cout<<"Final errors: "<<fv<<" "<<fb<<" "<<fs<<std::endl;
-        }
-        if (mesh.property(b, eh).b[0] == 0 and mesh.property(b, eh).b[1] == 0 and mesh.property(b, eh).b[2] == 0 and
-            mesh.property(a, eh).c.col(0)[0] == 0 and mesh.property(a, eh).c.col(1)[0] == 0 and mesh.property(a, eh).c.col(2)[0] == 0 and
-            mesh.property(a, eh).c.col(0)[1] == 0 and mesh.property(a, eh).c.col(1)[1] == 0 and mesh.property(a, eh).c.col(2)[1] == 0 and
-            mesh.property(a, eh).c.col(0)[2] == 0 and mesh.property(a, eh).c.col(1)[2] == 0 and mesh.property(a, eh).c.col(2)[2] == 0){
-            eh_arr.erase(std::find(eh_arr.begin(), eh_arr.end(), eh));
-            std::cout<<"erased_rekalkul"<<std::endl;
+                if(!init) eh_arr.emplace_back(eh);
         }
     }
-    auto nastop = std::chrono::high_resolution_clock::now();
-    auto naduration = std::chrono::duration_cast<std::chrono::milliseconds>(nastop - nastart);
-    cas += naduration.count();
 }
 //==================================================================================================================================================
 //Checks if to-be-added constraint is alpha compatible
-bool MeshWrap::is_alpha_compatible(MyMesh::EdgeHandle eh, Vector3d constraint){
+bool MeshWrap::is_alpha_compatible(const MyMesh::EdgeHandle& eh, const Vector3d& constraint){
     if(mesh.property(n, eh) == 0){
-        if(constraint(0) == 0 and constraint(1) == 0 and constraint(2) == 0) return false;
-        else return true;
+        return  !(constraint(0) == 0 and constraint(1) == 0 and constraint(2) == 0);
     }
     else if(mesh.property(n, eh) == 1){
-        if(std::pow((mesh.property(a, eh).c.col(0).transpose()*constraint), 2)
-         < std::pow((mesh.property(a, eh).c.col(0).norm()*constraint.norm()),2)*COSALPHA2) return true;
-        else return false;
-        
+        return (std::pow((mesh.property(a, eh).c.col(0).transpose()*constraint), 2)
+            < std::pow((mesh.property(a, eh).c.col(0).norm()*constraint.norm()),2)*COSALPHA2);
     }
     else if(mesh.property(n, eh) == 2){
         temp1 = mesh.property(a, eh).c.col(0);
         temp2 = mesh.property(a, eh).c.col(1);
         temp3 = temp1.cross(temp2);
-        if(std::pow((temp3.transpose()*constraint), 2)
-         > std::pow((temp3.norm()*constraint.norm()),2)*SINALPHA2) return true;
-        else return false;
+        return (std::pow((temp3.transpose()*constraint), 2) 
+            > std::pow((temp3.norm()*constraint.norm()),2)*SINALPHA2);
     }
     return false;
 }
 
 //Adds constraint to the system
-void MeshWrap::add_constraint(MyMesh::EdgeHandle eh, Vector3d constraint, double right_side){
+void MeshWrap::add_constraint(const MyMesh::EdgeHandle& eh, const Vector3d& constraint, double& right_side){
     mesh.property(a, eh).c.col(mesh.property(n, eh)) = constraint;
     mesh.property(b, eh).b(mesh.property(n, eh)) = right_side;
     mesh.property(n, eh)++;
 }
 
 //Calculates remaining constraints if there are less than 3
-void MeshWrap::calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessian, Vector3d c){
+void MeshWrap::calc_remaining_constraints(const MyMesh::EdgeHandle& eh, MatrixXd& Hessian, Vector3d& c){
+    
     //Create identity matrix of a size (3-n, 3)
         MatrixXd I = MatrixXd::Zero(3-mesh.property(n, eh),3);
         for (int i = 2-mesh.property(n, eh), j = 2; i>=0; i--, j--) I(i, j) = 1;
     //Create orthogonal matrix Z
-        MatrixXd Z = MatrixXd::Zero(3,3);
+        Matrix3d Z;
+        Z.setZero();
         for (int i = mesh.property(n, eh)-1; i>=0; i--) Z.col(i) = mesh.property(a, eh).c.col(i);
         if(mesh.property(n, eh) == 0) Z = MatrixXd::Identity(3,3);
         else {
@@ -240,12 +229,14 @@ void MeshWrap::calc_remaining_constraints(MyMesh::EdgeHandle eh, MatrixXd Hessia
             temp2 = Z.col(1);
             Z.col(2) = temp1.cross(temp2);                                          //Add second orthogonal vector
         }
+    
+    
     //compute remaining constraints and b sides
         MatrixXd res = MatrixXd::Zero(3-mesh.property(n, eh),3);
         VectorXd resb = VectorXd::Zero(3-mesh.property(n, eh));
-        auto temp = I*Z.inverse();
+        auto temp = I*inverse3x3(Z);
         res = temp*Hessian;
         resb = -(temp*c);
     //add constraints if possible
-        for (int i = 2-mesh.property(n, eh); i>=0; i--) if(is_alpha_compatible(eh, res.row(i))) add_constraint(eh, res.row(i), resb(i));  
+        for (int i = 2-mesh.property(n, eh); i>=0; i--) if(is_alpha_compatible(eh, res.row(i))) add_constraint(eh, res.row(i), resb(i)); 
 }
