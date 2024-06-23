@@ -54,3 +54,5 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
 - Změna v souboru `DecimaterT_impl.hh` je ve funkci `decimate(...)`, kde se přepočítává error i u sousedních vrcholů vrcholu, který zůstává po odstranění hrany. Viz CTRL+F `ZMENA`.
 
 - Garland-Heckbert simplifikace ani neposunuje vrcholy na jejich ideální pozice.
+
+- Výpočet erroru by měl být správný, stačí se tudíž zamyslet nad jeho přepočtem (a pak na zrychlení kódu a zjednodušení maticových operací...).
