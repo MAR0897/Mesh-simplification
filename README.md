@@ -16,7 +16,7 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
 
 1. Stáhnout OpenMesh knihovnu a rozbalit
 2. Vložit `ModLindTurkT.hh`, `ModLindTurkT_impl.hh` a `DecimaterT_impl.hh` do `OpenMeshRoot/src/OpenMesh/Tools/Decimater` a `decimater.cc` do `OpenMeshRoot/src/OpenMesh/Apps/Decimating`
-3. V OpenMesh adresáři (OpenMeshRoot) zavolat:
+3. V OpenMesh adresáři (OpenMeshRoot = OpenMesh-11.0.0 nebo podobně) zavolat:
 
     ```
     mkdir build
