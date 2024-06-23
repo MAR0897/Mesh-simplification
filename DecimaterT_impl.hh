@@ -160,6 +160,7 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
 
   //typedef std::vector<typename Mesh::VertexHandle> Support;
   //*****************************
+  //ZMENA na std::set
   typedef std::set<typename Mesh::VertexHandle> Support;
   //*************************** */
   typedef typename Support::iterator SupportIterator;
@@ -216,31 +217,20 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
     support.clear();
     for (; vv_it.is_valid(); ++vv_it) {
       support.insert(*vv_it);
-    //********************************************** */
-      /*typename Mesh::VertexVertexIter vvv_it = mesh_.vv_iter(*vv_it);
-      for (; vvv_it.is_valid(); ++vvv_it) {
-        support.insert(*vvv_it);
-      }*/
     }
-
+    //********************************************** */
+    //ZMENA - prepocitava se error i u sousedu vrcholu v1
     vv_it = mesh_.vv_iter(ci.v1);
     for (; vv_it.is_valid(); ++vv_it) {
       support.insert(*vv_it);
-      /*typename Mesh::VertexVertexIter vvv_it = mesh_.vv_iter(*vv_it);
-      for (; vvv_it.is_valid(); ++vvv_it) {
-        support.insert(*vvv_it);
-      }*/
     }
     
-    //erase v0 (to be deleted vertex) just in case
+    //pro jistotu odstranime v0
     for (auto it = support.begin(); it != support.end(); ) {
-        if (*it == ci.v0) {
-            it = support.erase(it);
-        } else {
-            ++it;
-        }
+        if (*it == ci.v0) it = support.erase(it);
+        else ++it;
     }
-     //************************************************ */ 
+    //************************************************ */ 
       
 
     // pre-processing

@@ -55,13 +55,9 @@ public: // inherited
   // Compute error and remaining vertex position for a halfedge
   virtual float collapse_priority(const CollapseInfo& _ci) override;
 	
-  //ZATIM NIC NEZADAVEJ, ALE KDYZ TAK SE K TOMUTO BODU VRAT: tady do CollapseInfo zadej pozici nejlepsiho umisteni remaining vertexu = p1
-  //PRAVDEPODOBNE TO COLLAPSE INFO JE JEN INFO K VYPOCTU ERRORU, NIC SE PODLE TOHO NEKOLABUJE, TAKZE NEMUSIS NIC VPISOVAT
+  //TO COLLAPSE INFO JE JEN INFO K VYPOCTU ERRORU, NIC SE PODLE TOHO NEKOLABUJE, TAKZE NETREBA NIC VPISOVAT
   //tu posun v1 na pozici p1 pomoci set_point
   virtual void preprocess_collapse(const CollapseInfo& _ci) override;
-    
-  //a nebo tu posun v1 na pozici p1 pomoci set_point, melo by to byt jedno, ta kvadricka simplifikace to stejne vubec neposunuje
-  //virtual void postprocess_collapse(const CollapseInfo& _ci) override;
 
   void set_opts(std::string opts)
   {
@@ -75,21 +71,24 @@ public: // inherited
     }
     else if (first.size() == 0) {}
     else std::cerr << "Invalid first LT option - either \"true\" or \"false\" required, default value (false) was set." << std::endl;
-    opts.erase(0, pos+1);
 
-  
-    //parse 2nd option (lambda - final error calculation weight)
     if (pos != std::string::npos) {
-      size_t pos = opts.find(",");
-      auto second = opts.substr(0, pos);
-      if (second.size() != 0) set_lambda(std::stod(second));
-      opts.erase(0, pos+1); 
+      opts.erase(0, pos+1);
+      std::cout<<"String: "<<opts<<std::endl;
+      //parse 2nd option (lambda - final error calculation weight)
+      if (pos != std::string::npos) {
+        size_t pos = opts.find(",");
+        auto second = opts.substr(0, pos);
+        if (second.size() != 0) set_lambda(std::stod(second));
+        opts.erase(0, pos+1); 
+      }
+      //parse 3rd option (alpha - angle to which planes are taken as coplanar)
+      if (!opts.empty()) {
+        set_alpha(std::stod(opts));
+        opts.erase(0, pos+1); 
+      }
     }
-    //parse 3rd option (alpha - angle to which planes are taken as coplanar)
-    if (!opts.empty()) {
-      set_alpha(std::stod(opts));
-      opts.erase(0, pos+1); 
-    }
+    set_alpha();
     
   }
   
@@ -118,7 +117,6 @@ public: // inherited
 private:
 
   bool A = true;
-  //std::vector<HalfedgeHandle> error;
   bool lock_boundary_edges = false;
   double  lambda = 0.5,
           alpha,
@@ -128,11 +126,9 @@ private:
   struct Props {
     bool is_locked;           //optional lock for boundary and 'semi-boundary' vertices to preserve mesh boundary
     size_t n;                 //number of valid constraints 
-    //double cost;              //the cost (error) of collapsing the edge
     Vec3d res_vertex_coords;  //ideal resulting vertex for collapsed edge
     Vec3d b_side;             //b side vector of the system of constraints 
     Matrix3d constraints;     //constraining the resulting vertex to one point               
-    //int ncalc;
   };
 
   HPropHandleT<Props>  LTprops;

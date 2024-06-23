@@ -44,7 +44,8 @@ initialize()
         }
     }
 
-    std::cout<<"Options: "<<lock_boundary_edges<<"\t"<<lambda<<"\t"<<alpha<<std::endl;
+    std::cout<<"Options: "<<"\n\t"<<"Boundary locked? "<<std::boolalpha<<lock_boundary_edges<<"\n\t"<<
+    "Lambda (error caculation weight): "<<"\t"<<lambda<<"\n\t"<<"Alpha parameter: "<<"\t"<<alpha<<std::endl;
 }
 
 template<class DecimaterType>
@@ -55,10 +56,6 @@ collapse_priority(const CollapseInfo& _ci)
     VertexHandle vh0 = _ci.v0;        //vertex to be potentially removed
     VertexHandle vh1 = _ci.v1;        //potentially remaining vertex
     HalfedgeHandle heh = _ci.v0v1;    //halfedge we are currently calculating error for
-    
-    //HalfedgeHandle rev_heh = _ci.v1v0;   //reverse halfedgehandle
-    /*if (A) Base::mesh().property(LTprops, heh).ncalc=0;
-    Base::mesh().property(LTprops, heh).ncalc++;*/
 
     if(!Base::mesh().property(LTprops, heh).is_locked){
         
@@ -252,12 +249,6 @@ collapse_priority(const CollapseInfo& _ci)
             double err = lambda*fv +                      //volume opt
                         (1-lambda)*length*length*fb;    //boundary opt
 
-
-            /*Base::mesh().property(LTprops, rev_heh).res_vertex_coords = Base::mesh().property(LTprops, heh).res_vertex_coords;
-            if(A) {
-                error.emplace_back(heh);
-            }*/
-            //Base::mesh().property(LTprops, heh).cost = err; 
             return static_cast<float>(err); 
         } 
     }
@@ -274,20 +265,6 @@ preprocess_collapse(const CollapseInfo& _ci)
     DefaultTraits::Point ideal_vertex;
     for (int i = 0; i<3; ++i) ideal_vertex[i] = Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords[i];
     Base::mesh().set_point(_ci.v1, ideal_vertex);
-
-    //std::cout<<"Moved vertex to: "<<Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords<<std::endl;
-    //std::sort(error.begin(), error.end(), [&](const HalfedgeHandle& a, const HalfedgeHandle& b) { return Base::mesh().property(LTprops, a).e<Base::mesh().property(LTprops, b).e; });
-    /*std::ofstream outfile("output.txt", std::ofstream::out | std::ofstream::app);
-    outfile << Base::mesh().property(LTprops, _ci.v0v1).cost <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords[0]
-    <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords[1]
-    <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords[2]
-    <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).b_side[0]
-    <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).b_side[1]
-    <<"\t" <<Base::mesh().property(LTprops, _ci.v0v1).b_side[2];*/
-    //"\t"<<Base::mesh().property(LTprops, heh).n<<"\t"<<Base::mesh().property(LTprops, heh).b_side<<"\t"<<Base::mesh().property(LTprops, heh).ncalc<<"\n";
-    //outfile<<std::endl;
-    //outfile.close();
-    //A = false;
 }
 
 template<class DecimaterType>
@@ -381,8 +358,6 @@ ModLindTurkT<DecimaterType>::inverse3x3(const Matrix3d& m){
     for (int i = 0; i<3; ++i) res[i] = adjugate[i]*(1.0/det);
     return res;
 }
-
-
 //-----------------------------------------------------------------------------
 
 //=============================================================================
