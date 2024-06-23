@@ -24,7 +24,7 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
     cmake ..
     make
     ```
-5. Pro spuštění LT simplifikace stačí zavolat:
+5. Pro spuštění LT simplifikace stačí ve složce `build/Build/bin` zavolat:
 
     ```
     ./commandlineDecimater -i [input-file] -o [output-file] -M LT -n [n-of-vertices-to-decimate]
