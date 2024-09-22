@@ -10,6 +10,7 @@
 #include <OpenMesh/Tools/Decimater/ModBaseT.hh>
 #include <OpenMesh/Core/Utils/Property.hh>
 #include <OpenMesh/Core/Utils/vector_cast.hh>
+#include <set>
 
 #include <OpenMesh/Eigen/Dense>
 #include <OpenMesh/Eigen/Sparse>
@@ -87,8 +88,6 @@ private:
   //command line args
   bool lock_boundary_edges = false;
   int eigenvec_n = 100;
-	
-  std::set<FaceHandle> faces1R;
 
 	//matrices
   Eigen::SparseMatrix<double> L;  //laplacian

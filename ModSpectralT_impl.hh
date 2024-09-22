@@ -51,17 +51,15 @@ initialize()
     //----------veci pro spektralni spimlifikaci
     size_t n_vertices = Base::mesh().n_vertices();
     norms.setZero(n_vertices);
-	projection.resize(n_vertices, n_vertices);
-	projection.setIdentity();
 
     //mass matrix calculation
     Eigen::VectorXd M = Eigen::VectorXd::Zero(n_vertices);
     typename Mesh::VertexIter v_it = Base::mesh().vertices_begin();
     typename Mesh::VertexIter v_end = Base::mesh().vertices_end();
+    //loop through all vertices and sum up their neighboring faces areas
     for (size_t i = 0; v_it!=v_end; ++v_it, ++i) {
         Base::mesh().property(idx, *v_it) = i;  //INDEX the vertices
-        typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(*v_it);
-        for (; vf_it.is_valid(); ++vf_it) {
+        for (typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(*v_it); vf_it.is_valid(); ++vf_it) {
             double obsah = Base::mesh().calc_face_area(*vf_it);
             M[i] += obsah;
             Base::mesh().property(area, *vf_it) = obsah;
@@ -74,9 +72,9 @@ initialize()
     v_it = Base::mesh().vertices_begin();
     for (; v_it!=v_end; ++v_it) {  //iterate over the whole mesh
         size_t i = Base::mesh().property(idx, *v_it); 
-        typename Mesh::VertexOHalfedgeIter voh_it = Base::mesh().voh_iter(*v_it);
         double sum = 0.0;
-        for (; voh_it.is_valid(); ++voh_it){ //iterate over the outgoing halfedges
+
+        for (typename Mesh::VertexOHalfedgeIter voh_it = Base::mesh().voh_iter(*v_it); voh_it.is_valid(); ++voh_it){ //iterate over the outgoing halfedges
             VertexHandle vh2 = Base::mesh().to_vertex_handle(*voh_it); //1-ring vertex
             size_t j = Base::mesh().property(idx, vh2); 
             HalfedgeHandle he2 = Base::mesh().opposite_halfedge_handle(*voh_it); //opposite halfedge to get the two bordering faces
@@ -98,17 +96,16 @@ initialize()
 	const Eigen::SparseMatrix<double> H = N.asDiagonal() * L * N.asDiagonal();
 	const unsigned int ncv = std::min(3 * eigenvec_n, static_cast<int>(L.rows()));
 	Spectra::SparseSymShiftSolve<double> op(H);
-    //u kralika nejde, LU faktorizace nebo neco selze
     Spectra::SymEigsShiftSolver<Spectra::SparseSymShiftSolve<double>> solver(op, eigenvec_n, ncv, -1e-6);
 	solver.init();
 	solver.compute(Spectra::SortRule::LargestMagn, 1000, 1e-10, Spectra::SortRule::SmallestAlge);
+    //compute signals
 	F = N.asDiagonal() * solver.eigenvectors();
 	F.colwise().normalize();
+    //compute Z matrix
 	Z = M.cwiseInverse().asDiagonal() * L * F;
 	F.transposeInPlace();
 	Z.transposeInPlace();
-
-    //std::cout<<"F: \n"<<F<<std::endl;
 
     std::cout<<"Successfully initialized"<<std::endl;
 }
@@ -138,19 +135,15 @@ collapse_priority(const CollapseInfo& _ci)
             }
             for (typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(vertex); vf_it.is_valid(); ++vf_it) faces1R.insert(*vf_it);
         }
-        std::cout<<"segfault0"<<std::endl;
-        // faces to then recalculate mass and cotangents for if the collapse is done
-        for (auto it = faces1R.begin(); it != faces1R.end(); ) {
-            if (Base::mesh().face_handle(heh) == *it || Base::mesh().face_handle(Base::mesh().opposite_halfedge_handle(heh)) == *it) {
-                it = faces1R.erase(it);  // erase returns the next valid iterator
-            } else {
-                ++it;  // only increment if not erasing
-            }
+        // faces to then recalculate mass and cotangents for if the collapse is done (1ring of faces without the 2, that are deleted after collapse)
+        for (auto it = faces1R.begin(); it != faces1R.end();) {
+            if (Base::mesh().face_handle(heh) == *it or Base::mesh().face_handle(Base::mesh().opposite_halfedge_handle(heh)) == *it) it = faces1R.erase(it);
+            else ++it;  //only increment if not erasing
         }
+        //index all local (2ring) vertices
         size_t i = 0;
-        for (auto& v : vertices2R) Base::mesh().property(local_idx, v) = i++;  //index all local (2ring) vertices
-        std::cout<<"segault0.1"<<std::endl;
-        // Previous local cost
+        for (auto& v : vertices2R) Base::mesh().property(local_idx, v) = i++;  
+        //add up the previous local cost from norms
         double prev_cost_local = 0;
         for(auto& v : vertices1R) prev_cost_local += norms[Base::mesh().property(idx, v)];
             
@@ -182,18 +175,16 @@ collapse_priority(const CollapseInfo& _ci)
             std::vector<Eigen::Triplet<double>> coeffs;
             coeffs.clear();
 
-            std::cout<<"segfault 1"<<std::endl;
             //Go through all 2ring faces and exclude the 2 triangles that will get removed by the edge collapse
             for(auto& f : faces2R) if (Base::mesh().face_handle(heh) != f and Base::mesh().face_handle(Base::mesh().opposite_halfedge_handle(heh)) != f) {
 
                 //check if the face vh0 or vh1 and get the vertices for calculations
                 bool has_central_vertex = false;
-                std::vector<VertexHandle> faceV;
+                std::vector<VertexHandle> faceV;    //vertices of one face
                 for (typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(f); fv_it.is_valid(); ++fv_it) {
-                    if (*fv_it == vh0 or *fv_it == vh1) has_central_vertex = true;
-                    else faceV.emplace_back(*fv_it);
+                    if (*fv_it == vh0 or *fv_it == vh1) has_central_vertex = true;  //if we find that a face has one of the collapsing vertices, we need to calculate it separately
+                    else faceV.emplace_back(*fv_it);    //and we will also collect the two other vertices
                 }
-                std::cout<<"segfault 2"<<std::endl;
                 //recalculate the contangets and area if the faces are going to be deformed
                 std::unordered_map<VertexHandle, double> c = Base::mesh().property(cotangents, f);
                 double a = Base::mesh().property(area, f);
@@ -210,7 +201,6 @@ collapse_priority(const CollapseInfo& _ci)
                     c.insert(std::pair<VertexHandle, double>(vh1, calc_cotangent_from_points(vec1, vec2, vec3))); //lets assume the KEEP vertex has the final pos
                     c.insert(std::pair<VertexHandle, double>(V1, calc_cotangent_from_points(vec3, vec2, vec1)));
                     c.insert(std::pair<VertexHandle, double>(V2, calc_cotangent_from_points(vec1, vec3, vec2)));
-                    std::cout<<"segfault 4"<<std::endl;
                     for (auto& v : {V1, V2, vh1}) M[Base::mesh().property(local_idx, v)] += a/3;
                     std::vector<size_t> indexes;
                     std::vector<double> cotgs;
@@ -219,9 +209,9 @@ collapse_priority(const CollapseInfo& _ci)
                         cotgs.emplace_back(it->second);
                     }
                     for (size_t k = 0; k<3; ++k) {
-                        coeffs.emplace_back(indexes[k], indexes[k], -cotgs[(k+1)%3]-cotgs[(k+2)%3]);//???
-                        coeffs.emplace_back(indexes[k], indexes[(k+1)%3], -cotgs[(k+2)%3]);//???
-                        coeffs.emplace_back(indexes[k], indexes[(k+2)%3], -cotgs[(k+1)%3]);//???
+                        coeffs.emplace_back(indexes[k], indexes[k], -0.5*(cotgs[(k+1)%3]+cotgs[(k+2)%3]));
+                        coeffs.emplace_back(indexes[k], indexes[(k+1)%3], 0.5*cotgs[(k+2)%3]);
+                        coeffs.emplace_back(indexes[k], indexes[(k+2)%3], 0.5*cotgs[(k+1)%3]);
                     }
                 }
                 
@@ -235,57 +225,71 @@ collapse_priority(const CollapseInfo& _ci)
                         cotgs.emplace_back(it->second);
                     }
                     for (size_t k = 0; k<3; ++k) {
-                        coeffs.emplace_back(indexes[k], indexes[k], -(cotgs[(k+1)%3]+cotgs[(k+2)%3]));//???
-                        coeffs.emplace_back(indexes[k], indexes[(k+1)%3], 0.5*cotgs[(k+2)%3]);//???
-                        coeffs.emplace_back(indexes[k], indexes[(k+2)%3], 0.5*cotgs[(k+1)%3]);//???
+                        coeffs.emplace_back(indexes[k], indexes[k], -0.5*(cotgs[(k+1)%3]+cotgs[(k+2)%3]));
+                        coeffs.emplace_back(indexes[k], indexes[(k+1)%3], 0.5*cotgs[(k+2)%3]);
+                        coeffs.emplace_back(indexes[k], indexes[(k+2)%3], 0.5*cotgs[(k+1)%3]);
                     }
                 }
-                std::cout<<"segfault 3"<<std::endl;
-                //std::cout<<"eval func: faces loop: M and L recalculated"<<std::endl;
             }
-            std::cout<<"segfault 5"<<std::endl;
-            if(iiiii > 14875) {
+            //std::cout<<"segfault 5"<<std::endl;
+            /*if(true) {
                 std::cout<<vertices2R.size()<<std::endl;
                 for (auto e : coeffs) std::cout<<e.row()<<", "<<e.col()<<", "<<e.value()<<std::endl;
-            }
+            }*/
             L.setFromTriplets(coeffs.begin(), coeffs.end());
-            std::cout<<"segfault 5.1"<<std::endl;
+            //std::cout<<alpha<<std::endl;
+            //std::cout<<L<<std::endl;
+            //std::cout<<"segfault 5.1"<<std::endl;
             // Cost (local) (sum of E_v) (minus the previous local cost)
             double cost_local = 0.0;
             LPF = PF * L;
+            //std::cout<<"Rows and cols of LPF: "<<LPF.rows()<<" "<<LPF.cols()<<std::endl;
             for(auto& v : vertices1R) if(v != vh0) {
-                size_t idx = Base::mesh().property(local_idx, v);
-                double Mv = M[idx];
+                size_t l_idx = Base::mesh().property(local_idx, v);
+                size_t g_idx = Base::mesh().property(idx, v);
+                double Mv = M[l_idx];
                 double E_v = std::numeric_limits<double>::quiet_NaN();
                 if(v == vh1){
                     const Eigen::VectorXd PZv = Z.col(idxK) * (1 - alpha) + Z.col(idxR) * alpha;
-                    E_v = Mv * (PZv - (1.0 / Mv) * LPF.col(idx)).squaredNorm();
+                    E_v = Mv * (PZv - (1.0 / Mv) * LPF.col(l_idx)).squaredNorm();
+                    //std::cout<<"Ev = "<<E_v<<std::endl;
                 }
-                else E_v = Mv * (Z.col(idx) - (1.0 / Mv) * LPF.col(idx)).squaredNorm();
+                else E_v = Mv * (Z.col(g_idx) - (1.0 / Mv) * LPF.col(l_idx)).squaredNorm();
+                //std::cout<<Z.col(g_idx)<<std::endl;
+                //std::cout<<LPF.col(l_idx)<<std::endl;
+                //std::cout<<"Mv = "<<Mv<<", E_v = "<<E_v<<std::endl;
                 cost_local += E_v;
                 diff.emplace_back(v, E_v);
             }
-            std::cout<<"segfault 6"<<std::endl;
             const double cost = cost_local - prev_cost_local;
+            //std::cout<<"eval cost: "<<cost_local<<std::endl;
+            //std::cout<<"prev cost: "<<prev_cost_local<<std::endl;
             return {pos, cost};
         };
 
-
-        std::vector<std::pair<VertexHandle, double>> diff[4];
+        //calculate the error and minimize it
+        std::vector<std::pair<VertexHandle, double>> diff[3];
         std::pair<Vec3d, double> cost[3] = { eval(0.0, diff[0]), eval(0.5, diff[1]), eval(1.0, diff[2]) };
-
         //minimize polynom
         double y1 = cost[0].second;
         double y2 = cost[1].second;
         double y3 = cost[2].second;
-        double minimum = -(-y3+4*y2-3*y1) / 2*(2*y3-4*y2+2*y1);            // -b/2a
-        if (minimum<0.0) minimum = 0.0;
-        else if (minimum>1.0) minimum = 1.0;
+        //std::cout<<y1<<" "<<y2<<" "<<y3<<"  = ypsilonka"<<std::endl;
+        //std::cout<<-(-3*y1+4*y2-y3)<<std::endl; 
+        //std::cout<<2*(2*y1-4*y2+2*y3)<<std::endl;
 
-        std::pair<Vec3d, double> final_edge_cost = eval(minimum, diff[3]);       //TODO: set tolerances to lower the number of calculations (if the minimum is 0.0, we already calculated this value)
-
+        double minimum = -(-3*y1+4*y2-y3) / 2*(2*y1-4*y2+2*y3);            // -b/2a
+        //std::cout<<"MINIMUM = "<<minimum<<std::endl;
+        //dont calculate if not needed, else recalculate for the computed minimum
+        std::pair<Vec3d, double> final_edge_cost;
+        std::vector<std::pair<VertexHandle, double>> cd;
+        if (minimum < 0.005) { final_edge_cost = cost[0]; cd = diff[0]; }                       //if minimum is < 0.005, use the calculated value for 0.0
+        else if (std::abs(minimum-0.5) < 0.005) { final_edge_cost = cost[1]; cd = diff[1]; }    //if minimum is around 0.5, use the calculated value for 0.5
+        else if (minimum > 0.995) { final_edge_cost = cost[2]; cd = diff[2]; }                  //if minimum is > 0.995, use the calculated value for 1.0
+        else final_edge_cost = eval(minimum, cd);                                               //else calculate it again for the minimum
+        //update mesh properties
         Base::mesh().property(SPprops, heh).alpha = minimum;
-        Base::mesh().property(SPprops, heh).cost_diff = diff[3];
+        Base::mesh().property(SPprops, heh).cost_diff = cd;
         Base::mesh().property(SPprops, heh).res_vertex_coords = final_edge_cost.first;
         Base::mesh().property(SPprops, heh).recalc_faces = faces1R;
         return static_cast<float>(final_edge_cost.second);   
@@ -325,33 +329,27 @@ postprocess_collapse(const CollapseInfo& _ci)
 	F.col(idxR).setConstant(std::numeric_limits<double>::quiet_NaN());
 	Z.col(idxR).setConstant(std::numeric_limits<double>::quiet_NaN());
 
-	// Update projection
-	projection.row(idxK) = projection.row(idxK) * (1 - alpha) + projection.row(idxR) * alpha;
-	//projection.prune([&](int row, int /*col*/, double /*val*/){ return row != (int)to_remove; });
-
     // Update costs
 	for(const std::pair<VertexHandle, double>& d : cost_diff) norms[Base::mesh().property(idx, d.first)] = d.second;
 	total_cost = norms.sum();
-    //std::cout<<norms<<std::endl;
 
     //TODO: recalculate the cotangents
     std::set<FaceHandle> faces = Base::mesh().property(SPprops, _ci.v0v1).recalc_faces;
+    std::vector<VertexHandle> v;
     for (auto& f : faces) {
-        typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(f);
-        VertexHandle v1 = *fv_it;
-        VertexHandle v2 = *(++fv_it);
-        VertexHandle v3 = *(++fv_it);
-        Vec3d vec1 = vector_cast<Vec3d>(Base::mesh().point(v1));
-        Vec3d vec2 = vector_cast<Vec3d>(Base::mesh().point(v2));
-        Vec3d vec3 = vector_cast<Vec3d>(Base::mesh().point(v3));
+        v.clear();
+        for (typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(f); fv_it.is_valid(); ++fv_it) v.emplace_back(*fv_it);
+        if (v.size() != 3) continue;
+        Vec3d vec1 = vector_cast<Vec3d>(Base::mesh().point(v[0]));
+        Vec3d vec2 = vector_cast<Vec3d>(Base::mesh().point(v[1]));
+        Vec3d vec3 = vector_cast<Vec3d>(Base::mesh().point(v[2]));
         Vec3d AB = vec1-vec3;
         Vec3d AC = vec2-vec3;
         double a = 0.5*(AB.cross(AC)).norm();
         std::unordered_map<VertexHandle, double> cotgs;
-        cotgs.insert(std::pair<VertexHandle, double>(v3, calc_cotangent_from_points(vec1, vec2, vec3))); //lets assume the KEEP vertex has the final pos
-        cotgs.insert(std::pair<VertexHandle, double>(v1, calc_cotangent_from_points(vec3, vec2, vec1)));
-        cotgs.insert(std::pair<VertexHandle, double>(v1, calc_cotangent_from_points(vec1, vec3, vec2)));
-
+        cotgs.insert(std::pair<VertexHandle, double>(v[2], calc_cotangent_from_points(vec1, vec2, vec3))); //lets assume the KEEP vertex has the final pos
+        cotgs.insert(std::pair<VertexHandle, double>(v[0], calc_cotangent_from_points(vec3, vec2, vec1)));
+        cotgs.insert(std::pair<VertexHandle, double>(v[1], calc_cotangent_from_points(vec1, vec3, vec2)));
         Base::mesh().property(area, f) = a;
         Base::mesh().property(cotangents, f) = cotgs;
     }
@@ -361,15 +359,15 @@ postprocess_collapse(const CollapseInfo& _ci)
 template<typename T>
 double 
 ModSpectralT<T>::calc_cotangent(const HalfedgeHandle& he, const VertexHandle& vh1, const VertexHandle& vh2){
-    FaceHandle fh1 = Base::mesh().face_handle(he);
-    typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(fh1);
+    FaceHandle fh = Base::mesh().face_handle(he);
+    typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(fh);
     VertexHandle vh3;
     for (; fv_it.is_valid(); ++fv_it) if (*fv_it!=vh1 and *fv_it!=vh2) vh3 = *fv_it; //get 3rd vertex  
     Vec3d vec1 = vector_cast<Vec3d>(Base::mesh().point(vh1));
     Vec3d vec2 = vector_cast<Vec3d>(Base::mesh().point(vh2));
     Vec3d vec3 = vector_cast<Vec3d>(Base::mesh().point(vh3));
     double cotg = calc_cotangent_from_points(vec1, vec2, vec3);
-    Base::mesh().property(cotangents, fh1).insert(std::pair<VertexHandle, double>(vh3, cotg));
+    Base::mesh().property(cotangents, fh).insert(std::pair<VertexHandle, double>(vh3, cotg));
     return cotg;
 }
 
