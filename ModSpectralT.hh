@@ -85,19 +85,18 @@ public: // inherited
 
 private:
 
+  //std::vector<double> errs;
+
   //command line args
   bool lock_boundary_edges = false;
   int eigenvec_n = 100;
 
 	//matrices
-  Eigen::SparseMatrix<double> L;  //laplacian
 	Eigen::MatrixXd F;              //signals
 	Eigen::MatrixXd Z;              //signals_L
-	Eigen::SparseMatrix<double, Eigen::RowMajor> projection;
 	
   //cost
   Eigen::VectorXd norms;  //previous error
-  double total_cost = 0;  //total cost of collapsed mesh  (sum of norms)
 	
   //Properties
   struct Props {
