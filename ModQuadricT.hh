@@ -91,15 +91,18 @@ public:
   {
     unset_max_err();
     Base::mesh().add_property( quadrics_ );
-    Base::mesh().add_property(res_vertex_coords);
+    Base::mesh().add_property(ideal_vertex_coords);
+    Base::mesh().add_property(is_locked);
+    Base::mesh().add_property(error_calculated);
   }
-
 
   /// Destructor
   virtual ~ModQuadricT()
   {
     Base::mesh().remove_property(quadrics_);
-    Base::mesh().remove_property(res_vertex_coords);
+    Base::mesh().remove_property(ideal_vertex_coords);
+    Base::mesh().remove_property(is_locked);
+    Base::mesh().remove_property(error_calculated);
   }
 
 
@@ -113,62 +116,28 @@ public: // inherited
    *  \see ModBaseT::collapse_priority() for return values
    *  \see set_max_err()
    */
-  virtual float collapse_priority(const CollapseInfo& _ci) override
-  {
-    using namespace OpenMesh;
+  virtual float collapse_priority(const CollapseInfo& _ci) override;
 
-    typedef Geometry::QuadricT<double> Q;
-
-    Q q = Base::mesh().property(quadrics_, _ci.v0);
-    q += Base::mesh().property(quadrics_, _ci.v1);
-
-
-    //choose a perfect spot for vertex v (calculate ideal coords)
-    Eigen::Matrix4d V;
-    Eigen::Vector4d v_coords;
-    V.setZero();
-    v_coords.setZero();
-    V(0,0) = q.a();
-    V(0,1) = q.b();
-    V(0,2) = q.c();
-    V(0,3) = q.d();
-    V(1,1) = q.e();
-    V(1,2) = q.f();
-    V(1,3) = q.g();
-    V(2,2) = q.h();
-    V(2,3) = q.i();
-    V(3,3) = q.j();
-    V(3,0) = 0; V(3,1) = 0; V(3,2) = 0; V(3,3) = 1;
-    v_coords = V.inverse()*(Eigen::Vector4d{0.0, 0.0, 0.0, 1.0});
-    for (size_t j = 0; j<3; ++j) Base::mesh().property(res_vertex_coords, _ci.v0v1)[j] = v_coords[j];
-
-
-
-    double err = v_coords.transpose()*(V*v_coords); //q(_ci.p1);
-
-    //min_ = std::min(err, min_);
-    //max_ = std::max(err, max_);
-
-    //double err = q( p );
-
-    return float( (err < max_err_) ? err : float( Base::ILLEGAL_COLLAPSE ) );
-  }
-
+  double compute_error(Geometry::QuadricT<double>& q, double&& x, double&& y, double&& z);
   
+  //move remaining vertex to ideal calculated position
   virtual void preprocess_collapse(const CollapseInfo& _ci)
   {
-      //move remaining vertex to ideal calculated position
-      DefaultTraits::Point ideal_vertex;
-      for (int i = 0; i<3; ++i) ideal_vertex[i] = Base::mesh().property(res_vertex_coords, _ci.v0v1)[i];
-      Base::mesh().set_point(_ci.v1, ideal_vertex);
+      Base::mesh().set_point(_ci.v1, Base::mesh().property(ideal_vertex_coords, _ci.v0v1));
   }
   
-
   /// Post-process halfedge collapse (accumulate quadrics)
   virtual void postprocess_collapse(const CollapseInfo& _ci) override
   {
-    Base::mesh().property(quadrics_, _ci.v1) +=
+      Base::mesh().property(quadrics_, _ci.v1) +=
       Base::mesh().property(quadrics_, _ci.v0);
+
+      //restart the error calculation property
+      /*if (min_mod != 0) {
+        typename Mesh::HalfedgeIter he_it = Base::mesh().halfedges_begin(),
+                                    he_end = Base::mesh().halfedges_end();
+        for (; he_it != he_end; ++he_it) Base::mesh().property(error_calculated, *he_it) = false;
+      }*/
   }
 
   /// set the percentage of maximum quadric error
@@ -201,16 +170,60 @@ public: // specific methods
   /// Return value of max. allowed error.
   double max_err() const { return max_err_; }
 
+  void set_lock(bool lock) { lock_boundary_edges = lock; }
+
+  void set_min_mod(int mod) { min_mod = mod; }
+
+  void set_opts(std::string opts) {
+
+    //parse 1st option (lock boundary edges)
+    size_t pos = opts.find(",");
+    bool lock;
+    std::string first = opts.substr(0, pos);            
+    if (first == "true" or first == "false") {
+      std::istringstream(first) >> std::boolalpha >> lock;
+      set_lock(lock);
+    }
+    else if (first.size() == 0) {}
+    else std::cerr << "Invalid first option - either \"true\" or \"false\" required, default value (false) was set." << std::endl;
+
+    if (pos != std::string::npos) {
+      opts.erase(0, pos+1);
+      pos = opts.find(",");
+      std::string first = opts.substr(0, pos);
+      int number = std::stoi(first);
+      if (number == 0 or number == 1 or number == 2 or number == 3) set_min_mod(number);
+      else {
+        std::cout<<"Invalid second option - permitted values: 0, 1, 2, 3\n"<<
+                  "0 = OpenMesh implementation; 1 = start/end/mid points only;\
+                  2 = line determined by v0 and v1; 3 = original GH (anywhere in 3D space)" << std::endl;
+        std::cout<<"Going with original OpenMesh implementation"<<std::endl;
+      }  
+      
+    }
+
+    if (pos != std::string::npos) {
+      opts.erase(0, pos+1);
+      set_max_err(std::stoi(opts));
+    }
+
+  }
+
 
 private:
 
   // maximum quadric error
+  bool lock_boundary_edges = false;
+  // 0 = OpenMesh implementation; 1 = start/end/mid points only;
+  // 2 = line determined by v0 and v1; 3 = original GH (anywhere in 3D space)
+  int min_mod = 0; 
   double max_err_;
 
   // this vertex property stores a quadric for each vertex
   VPropHandleT< Geometry::QuadricT<double> >  quadrics_;
-
-  HPropHandleT<Vec3d> res_vertex_coords;
+  HPropHandleT<DefaultTraits::Point> ideal_vertex_coords;
+  HPropHandleT<bool> is_locked;
+  HPropHandleT<bool> error_calculated; //check whether the error was already calculated on the opposite halfedge
 };
 
 //=============================================================================
