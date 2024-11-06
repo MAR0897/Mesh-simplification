@@ -2,7 +2,7 @@
 
 ## Obsah repozitáře (branches)
 
-- Garland-Heckbert = samostatná aplikace nad OpenMesh knihovnou
+- Garland-Heckbert = samostatná aplikace nad OpenMesh knihovnou a implementace v OpenMesh systému
 - GH-unconnected_vertices = pokus o implementaci spojování vrcholů v Garland-Heckbert simplifikaci
 - Lindstrom-Turk = samostatná aplikace nad OpenMesh knihovnou
 - LT-OpenMesh-system-impl = implementace Lindstrom-Turk simplifikace do decimačního systému OpenMeshe
