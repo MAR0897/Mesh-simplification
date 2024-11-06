@@ -1,4 +1,4 @@
-# Mesh-simplification
+# GH Mesh-simplification
 
 ## Custom implementace
 soubory:
