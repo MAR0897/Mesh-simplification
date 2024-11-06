@@ -2,9 +2,9 @@
 
 ## Custom implementace
 soubory:
-- main.cpp
-- CMakelists.txt
-- lyra.hpp
+- ```main.cpp```
+- ```CMakelists.txt```
+- ```lyra.hpp```
 
 ### Custom implementace - Spuštění:
 cmake .\
