@@ -36,7 +36,7 @@ Stejný návod jako v LindTurk OpenMesh system implementation větvi
 ### Poznámky 
 - GH přepočítává pouze pro sousední hrany result vertexu, aka pro ty, co se změní Q1+Q2
 - numericky neoptimalizováno
-- GH nepočítá s boundary edges (simplifikace bude probíhat špatně!!!), takže se to musí pořešit. Mají tam své řešení, jinak se ty hrany musí locknout.
+- GH nepočítá s boundary edges (simplifikace bude probíhat špatně!!!), takže se to musí pořešit. Mají tam své řešení, jinak se ty hrany musí locknout. V mé implementaci je možnost hrany locknout pomocí parametru.
 
 ### Výsledky
 Collapses/s:
@@ -46,3 +46,5 @@ Collapses/s:
 - 3 = 40000
 
 Jde tedy vidět, že i když jednotlivé módy nejsou numericky optimalizované, tak stejně se blíží originální OpenMesh implementaci. Výhoda OpenMesh implementace je nízký počet hran, které se musí přepočítat (mělo by se rovnat počtu sousedních hran vrcholu, který odstraňujeme (OpenMesh systém ale přepočítává vždy outgoing halfedge vrcholů, které jsou sousední s odstraňovaným vrcholem, takže ve výsledku je to ještě pomalejší, ale asi je to zase obecnější pro více druhů simplifikací)). Výhoda implementace dle GH je, že se nemusí počítat cost error pro oba halfedge, ale stačí jeden (tedy kdyby systém byl postaven jenom na hranách, tak by to možná bylo i rychlejší). GH implementace ale musí přepočítávat i sousední hrany vrcholu, který zůstává, takže přece jenom o něco více hran. Kdyby se ale postavil systém pouze na hrany, tak by to bylo ještě rychlejší, ale zase moc nevidím, jaké jsou tradeoffy pak s tím sortováním cost hodnot.
+
+V mé implementaci u módů 1-3 je při inicializaci cost erroru přidělena bool hodnota všem hranám unikátním halfedgům, takže se skutečný výpočet probíhá pouze jednou u každé hrany. Systém ale stále cyklí přes halfedge.
