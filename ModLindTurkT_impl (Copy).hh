@@ -109,37 +109,29 @@ collapse_priority(const CollapseInfo& _ci)
             } 
         }
         //calc constraint
-        for (const auto& face_handle : face_handles) {
-            if(Base::mesh().is_valid_handle(face_handle)){
+        for (const auto& ff : face_handles) {
 
-                //get the determinant of the face and compute the first bside
-                Eigen::Matrix3d fv_coords;
-                /*typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(face_handle);
-                for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) 
-                    fv_coords[i] = vector_cast<Vec3d>(Base::mesh().point(*fv_it));
-                 */
-                typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(face_handle);
-                for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) {
-                    DefaultTraits::Point p = Base::mesh().point(*fv_it);
-                    fv_coords.col(i) = Eigen::Vector3d(p[0], p[1], p[2]);
-                }
-
-                Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
-                Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
-                Eigen::Vector3d normal = AB.cross(AC);
-                constraint += normal;
-                double determinant = fv_coords.col(0).dot(normal);
-                bside += determinant;
-                
-                //store values for possible calculation of remaining constraints after boundary preservation step
-                normals.emplace_back(normal);
-                determinants.emplace_back(determinant);
+            //get the determinant of the face and compute the first bside
+            Eigen::Matrix3d fv_coords;
+            typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(ff);
+            for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) {
+                DefaultTraits::Point p = Base::mesh().point(*fv_it);
+                fv_coords.col(i) = Eigen::Vector3d(p[0], p[1], p[2]);
             }
+
+            Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
+            Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
+            Eigen::Vector3d normal = AB.cross(AC);
+            double determinant = fv_coords.col(0).dot(normal);
+
+            constraint += normal;
+            bside += determinant;
             
+            //store values for possible calculation of remaining constraints after boundary preservation step
+            normals.emplace_back(normal);
+            determinants.emplace_back(determinant);
         }
-        std::cout<<"Number of constraints: "<<Base::mesh().property(LTprops, heh).n<<"\t";
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
-        std::cout<<Base::mesh().property(LTprops, heh).n<<"\t";
 
     //------------------------------------------------------------------------------------------------------------------------------
     //Boundary preservation
@@ -159,16 +151,12 @@ collapse_priority(const CollapseInfo& _ci)
             else {
                 //getting the two boundary edges
                 typename Mesh::VertexOHalfedgeIter voh_it;
+                typename Mesh::VertexIHalfedgeIter vih_it;
                 //if v0 is boundary, check its outgoing halfedges, if not, check v0 outgoing halfedges
-                if (Base::mesh().is_boundary(vh0)) voh_it = Base::mesh().voh_iter(vh0);
-                else voh_it = Base::mesh().voh_iter(vh1);
-                for (; voh_it.is_valid(); ++voh_it) {
-                    //check if the outgoing halfedge is boundary, if so, add them to the vector
-                    if (Base::mesh().is_boundary(*voh_it)) boundary_edges.emplace_back(*voh_it);
-                }
-                HalfedgeHandle hh = boundary_edges[1];
-                //flip one of the edges, to have only one direction of halfedges along the boundary
-                boundary_edges[1] = Base::mesh().opposite_halfedge_handle(hh);
+                if (Base::mesh().is_boundary(vh0)) {voh_it = Base::mesh().voh_iter(vh0); vih_it = Base::mesh().vih_iter(vh0);}
+                else {voh_it = Base::mesh().voh_iter(vh1); vih_it = Base::mesh().vih_iter(vh1);}
+                for (; voh_it.is_valid(); ++voh_it) if (Base::mesh().is_boundary(*voh_it)) boundary_edges.emplace_back(*voh_it);
+                for (; vih_it.is_valid(); ++vih_it) if (Base::mesh().is_boundary(*vih_it)) boundary_edges.emplace_back(*vih_it);
             }
 
             //calculate E1 and E2 for every edge (that is for 2 or 3 edges)
@@ -184,15 +172,14 @@ collapse_priority(const CollapseInfo& _ci)
                 e2 += E2.row(i);
             }
             e3 = e1.cross(e2);
-
+            
             //equation 7
             constraint = e3*(e1.transpose()*e1);   bside = -(e3.transpose()*e3).value();
             if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
             //equation 8
             constraint = e1.cross(e3);      bside = 0.0;
-            if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);            
+            if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);         
         }
-        std::cout<<Base::mesh().property(LTprops, heh).n<<"\t";
 
     //-----------------------------------------------------------------------------------------------------------------------     
     //Volume optimization
@@ -206,13 +193,11 @@ collapse_priority(const CollapseInfo& _ci)
                 kv += determinants[i]*determinants[i];
             }
 
-            // //rescale VertexOptimization variables to match the equation (9)
-            // Hv /= 18.0; cv /= 18.0; kv /= 18.0;
+            //rescale VertexOptimization variables to match the equation (9)
+            Hv /= 18.0; cv /= 18.0; kv /= 18.0;
 
             calc_remaining_constraints(heh, Hv, cv);      
-        }
-        std::cout<<Base::mesh().property(LTprops, heh).n<<"\t";
-                  
+        }                  
     
     //----------------------------------------------------------------------------------------------------------------------
     //Boundary optimization
@@ -228,13 +213,11 @@ collapse_priority(const CollapseInfo& _ci)
                 kb += (E2.row(i)*E2.row(i).transpose()).value();
             }
 
-            // //rescale BoundaryOptimization variables to match the equation (10)
-            // Hb *= 0.5; cb *= 0.5; kb *= 0.5;
+            //rescale BoundaryOptimization variables to match the equation (10)
+            Hb *= 0.5; cb *= 0.5; kb *= 0.5;
 
             calc_remaining_constraints(heh, Hb, cb);
-        }
-        std::cout<<Base::mesh().property(LTprops, heh).n<<"\t";
-            
+        }   
 
     //----------------------------------------------------------------------------------------------------------------------
     //Apply triangle shape opt. if necessary
@@ -256,7 +239,6 @@ collapse_priority(const CollapseInfo& _ci)
             }
             calc_remaining_constraints(heh, Hs, cs);
         }
-        std::cout<<Base::mesh().property(LTprops, heh).n<<"\t";
 
     //----------------------------------------------------------------------------------------------------------------------
     //Calculate edge collapse error
@@ -269,9 +251,9 @@ collapse_priority(const CollapseInfo& _ci)
             for (int i = 0; i<3; ++i) Base::mesh().property(LTprops, heh).res_vertex_coords[i] = V[i];  
 
             //rescale VertexOptimization variables to match the equation (9)
-            Hv /= 18.0; cv /= 18.0; kv /= 18.0;
+            //Hv /= 18.0; cv /= 18.0; kv /= 18.0;
             //rescale BoundaryOptimization variables to match the equation (10)
-            Hb *= 0.5; cb *= 0.5; kb *= 0.5;
+            //Hb *= 0.5; cb *= 0.5; kb *= 0.5;
         
             //compute volume and boundary cost
             double fv = (0.5*(V.transpose()*(Hv*V)) + (cv.transpose()*V)).value() + 0.5*kv;  //volume objective function
@@ -306,10 +288,8 @@ is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constraint
             < std::pow((constraint0.norm()*constraint.norm()),2)*COSALPHA2);
     }
     else if(Base::mesh().property(LTprops, heh).n == 2){
-        auto temp1 = Base::mesh().property(LTprops, heh).constraints.row(0);
-        auto temp2 = Base::mesh().property(LTprops, heh).constraints.row(1);
-        Eigen::Vector3d crossp = temp1.cross(temp2);
-        return (std::pow(crossp.transpose()*constraint, 2) 
+        Eigen::Vector3d crossp =  Base::mesh().property(LTprops, heh).constraints.row(0).cross(Base::mesh().property(LTprops, heh).constraints.row(1));
+        return (std::pow((crossp.transpose()*constraint).value(), 2) 
             > std::pow((crossp.norm()*constraint.norm()),2)*SINALPHA2);
     }
     return false;
@@ -338,32 +318,21 @@ calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hes
         Eigen::MatrixXd I(N, 3);
         for (size_t i = 2-n, j = 2; i!=0; i--, j--) I(i,j) = 1;
     //Create orthogonal matrix Z
-        Eigen::Matrix3d Z;     
+        Eigen::Matrix3d Z;
         Z = Base::mesh().property(LTprops, heh).constraints.transpose();
         if(n == 0) Z = Eigen::MatrixXd::Identity(3,3);             //If no constraints so far, create a matrix of standard base vectors
         else {
             if (n == 1) {Z(0,1) = Z(1,0); Z(1,1) = -Z(0,0);}    //Add first orthogonal vector
-
-            auto temp1 = Z.col(0);
-            auto temp2 = Z.col(1);
-            Z.col(2) = temp1.cross(temp2);              //Add second orthogonal vector
+            Z.col(2) = Z.col(0).cross(Z.col(1));              //Add second orthogonal vector
         }
     //compute remaining constraints and b sides        
         auto temp = I*Z.inverse();
         auto constraints = temp*Hessian;
         auto bsides = -temp*c;
-        std::cout<<"Constraints:"<<constraints<<std::endl;
-        std::cout<<"Bsides"<<bsides<<std::endl;
     //add constraints if possible
-        for (size_t i = 0; i<=2-n; ++i) {
-            if(is_alpha_compatible(heh, constraints.row(i))) {
-                std::cout<<"isalphacomp"<<"\n";
+        for (size_t i = 0; i<=2-n; ++i)
+            if(is_alpha_compatible(heh, constraints.row(i)))       
                 add_constraint(heh, constraints.row(i), bsides(i));
-            }
-            else std::cout<<"isNOTalphacomp"<<"\n";
-
-        }
-            
 }
 
 // template<class DecimaterType>
