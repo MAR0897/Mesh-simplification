@@ -37,19 +37,19 @@ Stejný návod jako v LindTurk OpenMesh system implementation větvi
 ### Command line spuštění
 například:
 ```
-    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M Q:false:3 -n 2000
+    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M Q:true:3 -n 2000
 ```
 zavolá originální GH decimaci a
 ```
-    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M Q:false:0 -n 2000
+    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M Q:true:0 -n 2000
 ```
 decimuje mesh OpenMesh implementací
 
 ### Poznámky 
 - GH přepočítává pouze pro sousední hrany result vertexu, aka pro ty, co se změní Q1+Q2
 - numericky neoptimalizováno
-- Všechny módy kromě originální OpenMesh implementace mají pro každý halfedge parametr, jestli už byl spočítán error opposite halfedge (tedy jestli má cenu to počítat znovu. Teoreticky by to tedy mělo být 2x rychlejsí (pokud by tedy přepočet erroru bral násobně více času než všechno kolem toho, což zrovna u GH moc nenastává). U jiných algoritmů to ale může mít značnou úsporu.
-- GH nepočítá s boundary edges (simplifikace bude probíhat špatně!!!), takže se to musí pořešit. Mají tam své řešení, jinak se ty hrany musí locknout. V mé implementaci je možnost hrany locknout pomocí parametru.
+- Všechny módy kromě originální OpenMesh implementace mají pro každý halfedge parametr, jestli už byl spočítán error opposite halfedge (tedy jestli má cenu to počítat znovu). Teoreticky by to tedy mělo být 2x rychlejší (pokud by tedy přepočet erroru bral násobně více času než všechno kolem toho, což zrovna u GH moc nenastává). U jiných algoritmů to ale může mít značnou úsporu.
+- GH nepočítá s boundary edges (simplifikace bude probíhat špatně!!! - pomalu to bude ukousávat hranici meshe), takže se to musí pořešit. Mají tam své řešení, jinak se ty hrany musí locknout. V mé implementaci je možnost hrany locknout pomocí parametru.
 
 ### Přibližné výsledky
 Collapses/s (počet odstraněných hran za sekundu):
