@@ -163,7 +163,6 @@ collapse_priority(const CollapseInfo& _ci)
                 else {voh_it = Base::mesh().voh_iter(vh1); vih_it = Base::mesh().vih_iter(vh1);}
                 for (; voh_it.is_valid(); ++voh_it) if (Base::mesh().is_boundary(*voh_it)) boundary_edges.emplace_back(*voh_it);
                 for (; vih_it.is_valid(); ++vih_it) if (Base::mesh().is_boundary(*vih_it)) boundary_edges.emplace_back(*vih_it);
-                MM = true;
             }
 
             //calculate E1 and E2 for every edge (that is for 2 or 3 edges)
