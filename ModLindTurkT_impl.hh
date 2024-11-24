@@ -1,70 +1,133 @@
+/* ========================================================================= *
+ *                                                                           *
+ *                               OpenMesh                                    *
+ *           Copyright (c) 2001-2025, RWTH-Aachen University                 *
+ *           Department of Computer Graphics and Multimedia                  *
+ *                          All rights reserved.                             *
+ *                            www.openmesh.org                               *
+ *                                                                           *
+ *---------------------------------------------------------------------------*
+ * This file is part of OpenMesh.                                            *
+ *---------------------------------------------------------------------------*
+ *                                                                           *
+ * Redistribution and use in source and binary forms, with or without        *
+ * modification, are permitted provided that the following conditions        *
+ * are met:                                                                  *
+ *                                                                           *
+ * 1. Redistributions of source code must retain the above copyright notice, *
+ *    this list of conditions and the following disclaimer.                  *
+ *                                                                           *
+ * 2. Redistributions in binary form must reproduce the above copyright      *
+ *    notice, this list of conditions and the following disclaimer in the    *
+ *    documentation and/or other materials provided with the distribution.   *
+ *                                                                           *
+ * 3. Neither the name of the copyright holder nor the names of its          *
+ *    contributors may be used to endorse or promote products derived from   *
+ *    this software without specific prior written permission.               *
+ *                                                                           *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS       *
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED *
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A           *
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER *
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,  *
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,       *
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR        *
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF    *
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING      *
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS        *
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *
+ *                                                                           *
+ * ========================================================================= */
+
+
 //=============================================================================
 //
 //  CLASS ModLindTurk - IMPLEMENTATION
 //
 //=============================================================================
+
 #define OPENMESH_DECIMATER_MODLINDTURK_CC
+
 //== INCLUDES =================================================================
+
 #include <OpenMesh/Tools/Decimater/ModLindTurkT.hh>
-//== NAMESPACE ===============================================================
+
+//== NAMESPACE ================================================================
+
 namespace OpenMesh { // BEGIN_NS_OPENMESH
 namespace Decimater { // BEGIN_NS_DECIMATER
-//== IMPLEMENTATION ==========================================================
 
-using Matrix3d = std::array<Vec3d, 3>;
+//== IMPLEMENTATION ===========================================================
 
 template<class DecimaterType>
 void
 ModLindTurkT<DecimaterType>::
 initialize()
 {
-    if (!LTprops.is_valid()) Base::mesh().add_property(LTprops);
+    if (!is_locked.is_valid()) Base::mesh().add_property(is_locked);
+    if (!error_calculated.is_valid()) Base::mesh().add_property(error_calculated);
+    if (!n_.is_valid()) Base::mesh().add_property(n_);
+    if (!constraints.is_valid()) Base::mesh().add_property(constraints);
+    if (!rhs.is_valid()) Base::mesh().add_property(rhs);
+    if (!ideal_vertex_coords.is_valid()) Base::mesh().add_property(ideal_vertex_coords);
+    
 
     typename Mesh::HalfedgeIter he_it = Base::mesh().halfedges_begin(),
                                 he_end = Base::mesh().halfedges_end();
 
+    // initialize bool halfedge properties 
+    for (; he_it != he_end; ++he_it) {
+        Base::mesh().property(error_calculated, *he_it) = false;
+        Base::mesh().property(is_locked, *he_it) = false;
+    }
+
     //Lock all boundary edges if option is set, lock all boundary
     // and "semi-boundary" edges, so that the mesh boundary stays the same
+    he_it = Base::mesh().halfedges_begin();
     if (lock_boundary_edges) {
         for (; he_it != he_end; ++he_it) {
-
-            //no error was calculated yet
-            Base::mesh().property(LTprops, *he_it).error_calculated = false;
-
             if (Base::mesh().is_boundary(*he_it)) {
-                typename Mesh::VertexHandle vh1 = Base::mesh().to_vertex_handle(*he_it),
-                                            vh2 = Base::mesh().from_vertex_handle(*he_it);
-                typename Mesh::VertexOHalfedgeIter  voh_it1 = Base::mesh().voh_iter(vh1),
-                                                    voh_it2 = Base::mesh().voh_iter(vh2);
-                typename Mesh::VertexIHalfedgeIter  vih_it1 = Base::mesh().vih_iter(vh1),
-                                                    vih_it2 = Base::mesh().vih_iter(vh2);
-                for (; voh_it1.is_valid(); ++voh_it1) Base::mesh().property(LTprops, *voh_it1).is_locked = true;
-                for (; voh_it2.is_valid(); ++voh_it2) Base::mesh().property(LTprops, *voh_it2).is_locked = true;
-                for (; vih_it1.is_valid(); ++vih_it1) Base::mesh().property(LTprops, *vih_it1).is_locked = true;
-                for (; vih_it2.is_valid(); ++vih_it2) Base::mesh().property(LTprops, *vih_it2).is_locked = true;
+                typename Mesh::VertexHandle                         //define halfedge's vertices
+                    vh1 = Base::mesh().to_vertex_handle(*he_it),
+                    vh2 = Base::mesh().from_vertex_handle(*he_it);
+                typename Mesh::VertexOHalfedgeIter                  //get the vertices' outgoing halfedges
+                    voh_it1 = Base::mesh().voh_iter(vh1),
+                    voh_it2 = Base::mesh().voh_iter(vh2);
+                typename Mesh::VertexIHalfedgeIter                  //get the vertices' ingoing halfedges
+                    vih_it1 = Base::mesh().vih_iter(vh1),
+                    vih_it2 = Base::mesh().vih_iter(vh2);
+                for (; voh_it1.is_valid(); ++voh_it1)               //set the lock parameter to true for all
+                    Base::mesh().property(is_locked, *voh_it1) = true;
+                for (; voh_it2.is_valid(); ++voh_it2) 
+                    Base::mesh().property(is_locked, *voh_it2) = true;
+                for (; vih_it1.is_valid(); ++vih_it1) 
+                    Base::mesh().property(is_locked, *vih_it1) = true;
+                for (; vih_it2.is_valid(); ++vih_it2) 
+                    Base::mesh().property(is_locked, *vih_it2) = true;
             }
         }
     }
-
-    // if boundaries are not to be locked, we still need to initialize this property
-    else for (; he_it != he_end; ++he_it) Base::mesh().property(LTprops, *he_it).error_calculated = false;
 }
+
+//=============================================================================
 
 template<class DecimaterType>
 float
 ModLindTurkT<DecimaterType>::
 collapse_priority(const CollapseInfo& _ci) 
 {
-    VertexHandle vh0 = _ci.v0;        //vertex to be potentially removed
-    VertexHandle vh1 = _ci.v1;        //potentially remaining vertex
-    HalfedgeHandle heh = _ci.v0v1;    //halfedge we are currently calculating error for
+    // only take not locked halfedge, and halfedges, whose opposite halfedge has not calculated error yet
+    if(!Base::mesh().property(is_locked, _ci.v0v1) and !Base::mesh().property(error_calculated, _ci.v1v0)){
 
-    if(!Base::mesh().property(LTprops, heh).is_locked and !Base::mesh().property(LTprops, _ci.v1v0).error_calculated){
-        
+        HalfedgeHandle heh = _ci.v0v1;    //halfedge we are currently calculating error for
+
+        bool v0_is_boundary = Base::mesh().is_boundary(_ci.v0);
+        bool v1_is_boundary = Base::mesh().is_boundary(_ci.v1);
+
         //set variables to zero
-        Base::mesh().property(LTprops, heh).n = 0;                      
-        Base::mesh().property(LTprops, heh).constraints.setZero();
-        Base::mesh().property(LTprops, heh).b_side.setZero();           
+        Base::mesh().property(n_, heh) = 0;                      
+        Base::mesh().property(constraints, heh).setZero();
+        Base::mesh().property(rhs, heh).setZero();           
 
         Eigen::Vector3d constraint; constraint.setZero();    //storage for new constraint
         double bside = 0.0;                                 //storage for new right side number
@@ -72,8 +135,7 @@ collapse_priority(const CollapseInfo& _ci)
         //sets to avoid repeating calculations
         std::set<VertexHandle> vertex_handles;
         std::set<FaceHandle> face_handles;
-        std::vector<Eigen::Vector3d> normals;
-        std::vector<double> determinants;
+        std::vector<Eigen::Vector3d> normals;//????????????????????????????????????????????????????????????????????????????
            
         Eigen::Matrix3d Hv; Hv.setZero();           //Hessian for volume optimization
         Eigen::Matrix3d Hb; Hb.setZero();           //Hessian for boundary optimization
@@ -95,54 +157,48 @@ collapse_priority(const CollapseInfo& _ci)
 
         Eigen::Vector3d tri_shape; tri_shape.setZero();  //vector for storing vertex coords in triangle shape optimization    
 
-    //---------------------------------------------------------------------------------------------------------------
-    //Volume preservation (+volume optimization)    
-        //plug the faces we need into a set (every element is unique)
-        for (auto& vertex_handle : {vh0, vh1}) {
-            typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(vertex_handle);
-            for (; vf_it.is_valid(); ++vf_it) {
-                face_handles.insert(*vf_it);
-            } 
+    //-------------------------------------------------------------------------
+    // Volume preservation (+volume optimization)
+    //-------------------------------------------------------------------------
+        // plug the faces we need into a set
+        for (auto& vh : {_ci.v0, _ci.v1}) {
+            typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(vh);
+            for (; vf_it.is_valid(); ++vf_it) face_handles.insert(*vf_it);
         }
-        //calc constraint
+        // calc constraint
         for (const auto& ff : face_handles) {
 
-            //get the determinant of the face and compute the first bside
+            //coords of the 3 vertices of current face
             Eigen::Matrix3d fv_coords;
             typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(ff);
-            for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) {
-                p = Base::mesh().point(*fv_it);
-                fv_coords.col(i) = Eigen::Vector3d(p[0], p[1], p[2]);
-            }
+            for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) fv_coords.col(i) = eigenvec_cast(*fv_it);
+        
 
-            Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
-            Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
-            Eigen::Vector3d normal = AB.cross(AC);
+            // get face normal and determinant
+            Eigen::Vector3d normal = face_normal(fv_coords);
             double determinant = fv_coords.col(0).dot(normal);
-
+            
+            // add to constraint and rhs
             constraint += normal;
             bside += determinant;
+
+            normals.emplace_back(normal);//??????????????????????????????????????????????????????????????
+
+            // compute Hessian, c and k
+            Hv += normal*normal.transpose();
+            cv -= determinant*normal;
+            kv += determinant*determinant;
             
-            //store values for possible calculation of remaining constraints after boundary preservation step
-            normals.emplace_back(normal);
-            determinants.emplace_back(determinant);
-
-
-            //compute hessian, c and k using calculated values from volume preservation section
-            size_t size = normals.size();
-            for (size_t i = 0; i<size; ++i) {
-                Hv += normals[i]*normals[i].transpose();
-                cv -= determinants[i]*normals[i].transpose();
-                kv += determinants[i]*determinants[i];
-            }
-
-            //rescale VertexOptimization variables to match the equation (9)
-            Hv /= 18.0; cv /= 18.0; kv /= 18.0;     
         }
+        //rescale VertexOptimization variables to match the equation (9)
+        Hv /= 18.0; cv /= 18.0; kv /= 18.0;  
+
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
-    //------------------------------------------------------------------------------------------------------------------------------
-    //Boundary preservation
-        if(Base::mesh().is_boundary(vh0) or Base::mesh().is_boundary(vh1)){
+
+    //-------------------------------------------------------------------------
+    // Boundary preservation (+boundary optimization)
+    //-------------------------------------------------------------------------
+        if(v0_is_boundary or v1_is_boundary){
             //if edge is boundary, there will be 3 edges needed for constraints calculation (Figure 3), if not, there will be only 2
             if (Base::mesh().is_boundary(heh)) N = 3; else N = 2;
             std::vector<HalfedgeHandle> boundary_edges;
@@ -158,9 +214,9 @@ collapse_priority(const CollapseInfo& _ci)
                 //getting the two boundary edges
                 typename Mesh::VertexOHalfedgeIter voh_it;
                 typename Mesh::VertexIHalfedgeIter vih_it;
-                //if v0 is boundary, check its outgoing halfedges, if not, check v0 outgoing halfedges
-                if (Base::mesh().is_boundary(vh0)) {voh_it = Base::mesh().voh_iter(vh0); vih_it = Base::mesh().vih_iter(vh0);}
-                else {voh_it = Base::mesh().voh_iter(vh1); vih_it = Base::mesh().vih_iter(vh1);}
+                //if v0 is boundary, check its outgoing halfedges, if not, check v1 outgoing halfedges
+                if (v0_is_boundary) {voh_it = Base::mesh().voh_iter(_ci.v0); vih_it = Base::mesh().vih_iter(_ci.v0);}
+                else {voh_it = Base::mesh().voh_iter(_ci.v1); vih_it = Base::mesh().vih_iter(_ci.v1);}
                 for (; voh_it.is_valid(); ++voh_it) if (Base::mesh().is_boundary(*voh_it)) boundary_edges.emplace_back(*voh_it);
                 for (; vih_it.is_valid(); ++vih_it) if (Base::mesh().is_boundary(*vih_it)) boundary_edges.emplace_back(*vih_it);
             }
@@ -179,10 +235,10 @@ collapse_priority(const CollapseInfo& _ci)
             }
             e3 = e1.cross(e2);
             
-            //equation 7
+            // equation 7
             constraint = e3*(e1.transpose()*e1);   bside = -(e3.transpose()*e3).value();
             if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
-            //equation 8
+            // equation 8
             constraint = e1.cross(e3);      bside = 0.0;
             if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);    
 
@@ -196,31 +252,31 @@ collapse_priority(const CollapseInfo& _ci)
                 kb += (E2.row(i)*E2.row(i).transpose()).value();
             }
 
-            //rescale BoundaryOptimization variables to match the equation (10)
+            //rescale Boundary Optimization variables to match the equation (10)
             Hb *= 0.5; cb *= 0.5; kb *= 0.5;     
         }
-    //-----------------------------------------------------------------------------------------------------------------------     
-    //Volume optimization
-        if(Base::mesh().property(LTprops, heh).n < 3)
+    //-------------------------------------------------------------------------
+    // Volume optimization
+    //-------------------------------------------------------------------------
+        if(Base::mesh().property(n_, heh) < 3) 
             calc_remaining_constraints(heh, Hv, cv);
-    
-    //----------------------------------------------------------------------------------------------------------------------
-    //Boundary optimization
-        if((Base::mesh().is_boundary(vh0) or Base::mesh().is_boundary(vh1)) and Base::mesh().property(LTprops, heh).n < 3) 
+    //-------------------------------------------------------------------------
+    // Boundary optimization
+    //-------------------------------------------------------------------------
+        if((v0_is_boundary or v1_is_boundary) and Base::mesh().property(n_, heh) < 3) 
             calc_remaining_constraints(heh, Hb, cb);
-         
-
-    //----------------------------------------------------------------------------------------------------------------------
-    //Apply triangle shape opt. if necessary
-        if(Base::mesh().property(LTprops, heh).n < 3){
+    //-------------------------------------------------------------------------
+    // Triangle shape optimization
+    //-------------------------------------------------------------------------
+        if(Base::mesh().property(n_, heh) < 3){
             //insert needed vertices into a set
-            for (auto& vv : {vh0, vh1}) {
-                typename Mesh::VertexVertexIter vv_it = Base::mesh().vv_iter(vv);
+            for (auto& vh : {_ci.v0, _ci.v1}) {
+                typename Mesh::VertexVertexIter vv_it = Base::mesh().vv_iter(vh);
                 for (; vv_it.is_valid(); ++vv_it) vertex_handles.insert(*vv_it);
             }
             //and erase those, which are not needed
-            vertex_handles.erase(vh0);
-            vertex_handles.erase(vh1);
+            vertex_handles.erase(_ci.v0);
+            vertex_handles.erase(_ci.v1);
             //calculate the Hessian and cs
             for (auto& vv : vertex_handles){
                 p = Base::mesh().point(vv); tri_shape  = Eigen::Vector3d(p[0], p[1], p[2]);
@@ -231,94 +287,104 @@ collapse_priority(const CollapseInfo& _ci)
             calc_remaining_constraints(heh, Hs, cs);
         }
 
-    //----------------------------------------------------------------------------------------------------------------------
-    //Calculate edge collapse error
-        if(Base::mesh().property(LTprops, heh).n == 3){
+    //-------------------------------------------------------------------------
+    // Calculate edge collapse error
+    //-------------------------------------------------------------------------
+        if(Base::mesh().property(n_, heh) == 3){
             //get final vertex position (solve system of equations using inverse matrix)
-            Eigen::Matrix3d A_inv = Base::mesh().property(LTprops, heh).constraints.inverse();
-            Eigen::Vector3d bside = Base::mesh().property(LTprops, heh).b_side;
-            Eigen::Vector3d V = A_inv*bside;
+            Eigen::Matrix3d A_inv = Base::mesh().property(constraints, heh).inverse();
+            Eigen::Vector3d b = Base::mesh().property(rhs, heh);
+            Eigen::Vector3d V = A_inv*b;
             //store the vertex position as Point
-            for (int i = 0; i<3; ++i) Base::mesh().property(LTprops, heh).res_vertex_coords[i] = V[i];
+            for (int i = 0; i<3; ++i) Base::mesh().property(ideal_vertex_coords, heh)[i] = V[i];
         
             //compute volume and boundary cost
             double fv = (0.5*(V.transpose()*(Hv*V)) + (cv.transpose()*V)).value() + 0.5*kv;  //volume objective function
             double fb = (0.5*(V.transpose()*(Hb*V)) + (cb.transpose()*V)).value() + 0.5*kb;  //area objective function
             //calculate final error
-            p = Base::mesh().point(vh0); Eigen::Vector3d v0  = Eigen::Vector3d(p[0], p[1], p[2]);
-            p = Base::mesh().point(vh1); Eigen::Vector3d v1  = Eigen::Vector3d(p[0], p[1], p[2]);
+            p = Base::mesh().point(_ci.v0); Eigen::Vector3d v0  = Eigen::Vector3d(p[0], p[1], p[2]);
+            p = Base::mesh().point(_ci.v1); Eigen::Vector3d v1  = Eigen::Vector3d(p[0], p[1], p[2]);
             double length = (v1-v0).norm();
-            double err = lambda*fv +                    //volume opt
-                        (1-lambda)*length*length*fb;    //boundary opt
-
-            Base::mesh().property(LTprops, _ci.v0v1).error_calculated = true;
+            double err = 0.5*(fv + length*length*fb);    // E = lambda*fv + (1-lambda)*L^2*fb
+        
+            Base::mesh().property(error_calculated, _ci.v0v1) = true;
 
             return static_cast<float>(err); 
         } 
     }
-    //if 2 or less contraints were found, we won't collapse this edge
+
+    // if 2 or less contraints were found, we won't collapse this edge
+    // (or if the halfedge was locked, or its opposite has already calculated error)
     return FLT_MAX;
 }
 
+//=============================================================================
+//tu se jeste da usetrit cas skladovanim norem a crossp (ale asi ne nejak vyznamne)
 template<class DecimaterType>
 bool
 ModLindTurkT<DecimaterType>::
-is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constraint)
+is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constr)
 {
-    if(Base::mesh().property(LTprops, heh).n == 0){
-        return  !(constraint(0) == 0.0 and constraint(1) == 0.0 and constraint(2) == 0.0);
+    // a1 != null vector
+    if(Base::mesh().property(n_, heh) == 0)
+        return  !(constr(0) == 0.0 and constr(1) == 0.0 and constr(2) == 0.0);
+
+    // ((a1^T)*a2)^2 < (||a1||*||a2||*cos(alpha))^2
+    else if(Base::mesh().property(n_, heh) == 1){
+        Eigen::Vector3d a1 = Base::mesh().property(constraints, heh).row(0);
+        return (std::abs(a1.dot(constr)) < std::abs((a1.norm()*constr.norm())*COSALPHA));
     }
-    else if(Base::mesh().property(LTprops, heh).n == 1){
-        Eigen::Vector3d constraint0 = Base::mesh().property(LTprops, heh).constraints.row(0);
-        return (std::pow(constraint0.transpose()*constraint, 2)
-            < std::pow((constraint0.norm()*constraint.norm()),2)*COSALPHA2);
-    }
-    else if(Base::mesh().property(LTprops, heh).n == 2){
-        Eigen::Vector3d crossp =  Base::mesh().property(LTprops, heh).constraints.row(0).cross(Base::mesh().property(LTprops, heh).constraints.row(1));
-        return (std::pow((crossp.transpose()*constraint).value(), 2) 
-            > std::pow((crossp.norm()*constraint.norm()),2)*SINALPHA2);
+    // ((a1 x a2)^T * a3)^2 > (||a1 x a2||*||a3||*sin(alpha))^2
+    else if(Base::mesh().property(n_, heh) == 2){
+        Eigen::Vector3d crossp =  Base::mesh().property(constraints, heh).row(0).cross(Base::mesh().property(constraints, heh).row(1));
+        return (std::abs((crossp.transpose()*constr).value()) > std::abs((crossp.norm()*constr.norm())*SINALPHA));
     }
     return false;
 }
 
-//Adds constraint to the system
+//=============================================================================
+
 template<class DecimaterType>
 void
 ModLindTurkT<DecimaterType>::
-add_constraint(const HalfedgeHandle& heh, const Eigen::Vector3d& constraint, const double& right_side)
+add_constraint(const HalfedgeHandle& heh, const Eigen::Vector3d& constr, const double& rhs_)
 {
-    Base::mesh().property(LTprops, heh).constraints.row(Base::mesh().property(LTprops, heh).n) = constraint;
-    Base::mesh().property(LTprops, heh).b_side[Base::mesh().property(LTprops, heh).n] = right_side;
-    Base::mesh().property(LTprops, heh).n++;
+    Base::mesh().property(constraints, heh).row(Base::mesh().property(n_, heh)) = constr;
+    Base::mesh().property(rhs, heh)[Base::mesh().property(n_, heh)] = rhs_;
+    Base::mesh().property(n_, heh)++;
 }
 
-//Calculates remaining constraints if there are less than 3
+//=============================================================================
+
 template<class DecimaterType>
 void
 ModLindTurkT<DecimaterType>::
 calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hessian, const Eigen::Vector3d& c)
 {
-    size_t n = Base::mesh().property(LTprops, heh).n;
+    size_t n = Base::mesh().property(n_, heh);
     size_t N = 3-n;
+
     //Create identity matrix of a size (3-n, 3)
-        Eigen::MatrixXd I(N, 3);
-        for (size_t i = 2-n, j = 2; i!=0; i--, j--) I(i,j) = 1;
+    Eigen::MatrixXd I(N, 3);
+    for (size_t i = 2-n, j = 2; i!=0; i--, j--) I(i,j) = 1;
+    
     //Create orthogonal matrix Z
-        Eigen::Matrix3d Z;
-        Z = Base::mesh().property(LTprops, heh).constraints.transpose();
-        if(n == 0) Z = Eigen::MatrixXd::Identity(3,3);             //If no constraints so far, create a matrix of standard base vectors
-        else {
-            if (n == 1) {Z(0,1) = Z(1,0); Z(1,1) = -Z(0,0);}    //Add first orthogonal vector
-            Z.col(2) = Z.col(0).cross(Z.col(1));              //Add second orthogonal vector
-        }
+    Eigen::Matrix3d Z = Base::mesh().property(constraints, heh).transpose();
+    if(n == 0) Z = Eigen::MatrixXd::Identity(3,3);        //If no constraints so far, create a matrix of standard base vectors
+    else {
+        if (n == 1) {Z(0,1) = Z(1,0); Z(1,1) = -Z(0,0);}  //Add first orthogonal vector
+        Z.col(2) = Z.col(0).cross(Z.col(1));              //Add second orthogonal vector
+    }
+    
     //compute remaining constraints and b sides        
-        auto temp = I*Z.inverse();
-        auto constraints = temp*Hessian;
-        auto bsides = -temp*c;
+    auto temp = I*Z.inverse();
+    auto constraints = temp*Hessian;
+    auto bsides = -temp*c;
+    
     //add constraints if possible
-        for (size_t i = 0; i<=2-n; ++i)
-            if(is_alpha_compatible(heh, constraints.row(i)))       
-                add_constraint(heh, constraints.row(i), bsides(i));
+    for (size_t i = 0; i<=2-n; ++i)
+        if(is_alpha_compatible(heh, constraints.row(i)))       
+            add_constraint(heh, constraints.row(i), bsides(i));
 }
 
 //=============================================================================

@@ -1,3 +1,45 @@
+/* ========================================================================= *
+ *                                                                           *
+ *                               OpenMesh                                    *
+ *           Copyright (c) 2001-2025, RWTH-Aachen University                 *
+ *           Department of Computer Graphics and Multimedia                  *
+ *                          All rights reserved.                             *
+ *                            www.openmesh.org                               *
+ *                                                                           *
+ *---------------------------------------------------------------------------*
+ * This file is part of OpenMesh.                                            *
+ *---------------------------------------------------------------------------*
+ *                                                                           *
+ * Redistribution and use in source and binary forms, with or without        *
+ * modification, are permitted provided that the following conditions        *
+ * are met:                                                                  *
+ *                                                                           *
+ * 1. Redistributions of source code must retain the above copyright notice, *
+ *    this list of conditions and the following disclaimer.                  *
+ *                                                                           *
+ * 2. Redistributions in binary form must reproduce the above copyright      *
+ *    notice, this list of conditions and the following disclaimer in the    *
+ *    documentation and/or other materials provided with the distribution.   *
+ *                                                                           *
+ * 3. Neither the name of the copyright holder nor the names of its          *
+ *    contributors may be used to endorse or promote products derived from   *
+ *    this software without specific prior written permission.               *
+ *                                                                           *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS       *
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED *
+ * TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A           *
+ * PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER *
+ * OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,  *
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,       *
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR        *
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF    *
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING      *
+ * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS        *
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.              *
+ *                                                                           *
+ * ========================================================================= */
+
+
 //=============================================================================
 //
 //  CLASS ModLindTurkT
@@ -17,9 +59,8 @@ namespace Decimater {
 //== CLASS DEFINITION =========================================================
 
 
-/** \brief Mesh decimation module computing collapse priority based on .
- *
- *  
+/** \brief Mesh decimation module computing collapse priority based on 
+ *  Memoryless simplification algorithm by Peter Lindstrom and Greg Turk 
  */
 template <class MeshT>
 class ModLindTurkT : public ModBaseT<MeshT>
@@ -35,30 +76,43 @@ public:
    explicit ModLindTurkT( MeshT &_mesh )
     : Base(_mesh, false)
   {
-    // Add needed mesh properties for Lind-Turk decimation
-    Base::mesh().add_property(LTprops);
+    // Add needed mesh properties
+    Base::mesh().add_property(is_locked);
+    Base::mesh().add_property(error_calculated);
+    Base::mesh().add_property(n_);
+    Base::mesh().add_property(constraints);
+    Base::mesh().add_property(rhs);
+    Base::mesh().add_property(ideal_vertex_coords);
   }
   
   virtual ~ModLindTurkT()
   {
-    Base::mesh().remove_property(LTprops);
+    Base::mesh().remove_property(is_locked);
+    Base::mesh().remove_property(error_calculated);
+    Base::mesh().remove_property(n_);
+    Base::mesh().remove_property(constraints);
+    Base::mesh().remove_property(rhs);
+    Base::mesh().remove_property(ideal_vertex_coords);
   }
 
 
 public: // inherited
 
-  /// Initalize the module and prepare the mesh for decimation, possibly lock boundary edges if option is set
+  /** \brief Initalize the module and prepare the mesh for decimation, 
+   * possibly lock boundary edges if option is set.
+   */
   virtual void initialize(void) override;
 
-  // Compute error and remaining vertex position for a halfedge
+  /** \brief Compute ideal vertex position for a halfedge and it's cost
+   *  function (error).
+   */ 
   virtual float collapse_priority(const CollapseInfo& _ci) override;
 	
-  //TO COLLAPSE INFO JE JEN INFO K VYPOCTU ERRORU, NIC SE PODLE TOHO NEKOLABUJE, TAKZE NETREBA NIC VPISOVAT
-  //tu posun v1 na pozici p1 pomoci set_point
+  /** \brief Move remaining vertex (v1) to the ideal calculated position.
+   */
   virtual void preprocess_collapse(const CollapseInfo& _ci) override {
-    //move remaining vertex to ideal calculated position
-    Base::mesh().set_point(_ci.v1, Base::mesh().property(LTprops, _ci.v0v1).res_vertex_coords);
-  }
+    Base::mesh().set_point(_ci.v1, Base::mesh().property(ideal_vertex_coords, _ci.v0v1));}
+  
 
   void set_opts(std::string opts)
   {
@@ -80,59 +134,135 @@ public: // inherited
       if (pos != std::string::npos) {
         size_t pos = opts.find(",");
         auto second = opts.substr(0, pos);
-        if (second.size() != 0) set_lambda(std::stod(second));
+        //if (second.size() != 0) set_lambda(std::stod(second));
         opts.erase(0, pos+1); 
       }
       //parse 3rd option (alpha - angle to which planes are taken as coplanar)
       if (!opts.empty()) {
-        set_alpha(std::stod(opts));
+        //set_alpha(std::stod(opts));
         opts.erase(0, pos+1); 
       }
     }
-    else set_alpha();
-  }
-  
-  void set_lambda(double _lambda) { lambda = _lambda; }
-
-  void set_lock(double _lock) { lock_boundary_edges = _lock; }
-
-  void set_alpha(double _alpha = 0.01745329251)
-  {
-    alpha = _alpha;
-    SINALPHA2 = std::pow(std::sin(alpha), 2);
-    COSALPHA2 = std::pow(std::cos(alpha), 2);
+    //else set_alpha();
   }
 
-  //Checks if constraint is alpha compatible, so we can add it to the system using 'add_constraint'
-  bool is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constraint);
-
-  //Adds constraint to current halfedge properties
-  void add_constraint(const HalfedgeHandle& heh, const Eigen::Vector3d& constraint, const double& right_side);
-
-  //Calculates remaining constraints if there are less than 3
-  void calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hessian, const Eigen::Vector3d& c);
-
+ 
 private:
 
+  // ------Private functions---------------------------------------------------
+  
+  /** \brief If the 'lock_boundary_edges' parameter is set to true, the module
+   * will preserve the mesh boundary.
+   * 
+   * \details Check 'initilize' function for details.
+   */
+  void set_lock(double _lock) { lock_boundary_edges = _lock; }
+
+  /** \brief Checks if constraint is alpha compatible, so we can add it 
+   * to the system using function 'add_constraint'.
+   * 
+   * \param heh The current halfedge
+   * \param constr The constraint vector (plane equation vector without
+   *  right side)
+   * 
+   * \return True if the constraint passes all alpha-compatible checks,
+   * so it can be added to the system of constraints.
+   */
+  bool is_alpha_compatible(const HalfedgeHandle& heh, 
+                           const Eigen::Vector3d& constr);
+
+  /** \brief Adds a constraint to current halfedge properties and increments
+   *  number of constraints for given halfedge.
+   */
+  void add_constraint(const HalfedgeHandle& heh, 
+                      const Eigen::Vector3d& constr, 
+                      const double& rhs_);
+
+  /** \brief Calculates remaining constraints if there are less than 3.
+   * 
+   * \details Using Hessian and c vector which are calculated in volume and
+   * boundary preservation sections in the error calculation function, this
+   * function tries to find the remaining constraints to fully constraint
+   * the ideal collapse vertex to 1 point in the 3D space.
+   * 
+   * \param heh The current halfedge we are calculating error for
+   * \param Hessian The Hessian for given error optimization
+   * \param c The vector c for given error optimization
+   * 
+   * \return Fills the halfedge handle constraints property with found 
+   * constraints if they are alpha-compatible.
+   */
+  void calc_remaining_constraints(const HalfedgeHandle& heh, 
+                                  const Eigen::Matrix3d& Hessian, 
+                                  const Eigen::Vector3d& c);
+
+
+  inline Eigen::Vector3d eigenvec_cast(const VertexHandle& v) {
+
+    DefaultTraits::Point p = Base::mesh().point(v);
+    return Eigen::Vector3d(p[0], p[1], p[2]);
+  }
+
+  inline Eigen::Vector3d face_normal(const Eigen::Matrix3d& fv_coords) {
+
+    Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
+    Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
+    return AB.cross(AC);
+  }
+
+
+  // ------Parameters of the decimating module---------------------------------
+
+
+  /** Parameter for locking all boundary and "semi-boundary" edge (edges with 
+   * only one boundary vertex) to preserve the mesh boundary. If we don't
+   * collapse these edges, the boundary will stay the same.
+   */
   bool lock_boundary_edges = false;
-  double  lambda = 0.5,
-          alpha,
-          SINALPHA2,
-          COSALPHA2;
 
-  struct Props {
-    //checks if the cost error of a halfedge has been computed,
-    // so we dont need to compute it for the other halfedge,
-    // as this algorithm only work with edges 
-    bool error_calculated;    
-    bool is_locked;           //optional lock for boundary and 'semi-boundary' vertices to preserve mesh boundary
-    size_t n;                 //number of valid constraints 
-    DefaultTraits::Point res_vertex_coords;  //ideal resulting vertex for collapsed edge
-    Eigen::Vector3d b_side;             //b side vector of the system of constraints 
-    Eigen::Matrix3d constraints;     //constraining the resulting vertex to one point               
-  };
+  // constrait compatibility parameter
+  double  SINALPHA = std::sin(0.01745329251),
+          COSALPHA = std::cos(0.01745329251);
 
-  HPropHandleT<Props>  LTprops;
+
+  // ------Properties of each halfedge-----------------------------------------
+
+
+  /** If the halfedge is locked, the error will be automatically FLT_MAX.
+   *  - This property is activated with the parameter "lock_boundary_edges"
+   * -> if set to true, it will set this property to true to every boundary
+   * and "semi-boudary" edges (more concretely their respective halfedges)
+   */
+  HPropHandleT<bool> is_locked;
+
+  /** If the error is already calculated for the opposite halfedge,
+   * no need to calculate it, so let's set it to FLT_MAX
+   * (the error calculating function checks if the opposite halfedge has
+   * it's error calculated: if yes, it sets the error for the current halfedge
+   * to FLT_MAX)
+   */
+  HPropHandleT<bool> error_calculated;
+
+  /** Number of valid constraints acquired for given halfedge during the error 
+   * calculation.
+   * (number of rows in matrix A)
+   */
+  HPropHandleT<size_t> n_;
+
+  /** Storage for all valid constraints acquired for given halfedge during the 
+   * error calculation.
+   * (matrix A)
+   */
+  HPropHandleT<Eigen::Matrix3d> constraints;
+
+  // The right side of equation Av=b
+  HPropHandleT<Eigen::Vector3d> rhs;
+
+  /** Ideal vertex position after collapse
+   * Solution to equation Av=b
+   * solved using: v = A^(-1) * b
+   */
+  HPropHandleT<DefaultTraits::Point> ideal_vertex_coords;
 };
 
 //=============================================================================
