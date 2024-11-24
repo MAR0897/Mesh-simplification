@@ -129,33 +129,16 @@ collapse_priority(const CollapseInfo& _ci)
         Base::mesh().property(constraints, heh).setZero();
         Base::mesh().property(rhs, heh).setZero();           
 
-        Eigen::Vector3d constraint; constraint.setZero();    //storage for new constraint
+        Eigen::Vector3d constraint; constraint.setZero();   //storage for new constraint
         double bside = 0.0;                                 //storage for new right side number
 
-        //sets to avoid repeating calculations
-        std::set<VertexHandle> vertex_handles;
         std::set<FaceHandle> face_handles;
-        std::vector<Eigen::Vector3d> normals;//????????????????????????????????????????????????????????????????????????????
            
-        Eigen::Matrix3d Hv; Hv.setZero();           //Hessian for volume optimization
-        Eigen::Matrix3d Hb; Hb.setZero();           //Hessian for boundary optimization
-        Eigen::Matrix3d Hs; Hs.setZero();           //Hessian for triangle shape optimization
-        Eigen::Vector3d cv; cv.setZero();           //vector for volume optimizaton
-        Eigen::Vector3d cb; cb.setZero();           //vector for boundary optimization
-        Eigen::Vector3d cs; cs.setZero();           //vector for triangle shape optimization
-        double kv = 0.0;                            //constants in volume optimization
-        double kb = 0.0;                            //constants in boundary optimization
-        double ks = 0.0;                            //constants in triangle shape optimization
-        Eigen::Matrix3d E1;  E1.setZero();          //e1 for every vertex
-        Eigen::Matrix3d E2;  E2.setZero();          //e2 for every vertex
-        Eigen::Matrix3d e1x; e1x.setZero();         //e1x matrix for boundary optimization
-        Eigen::Vector3d e1; e1.setZero();                //summed E1        
-        Eigen::Vector3d e2; e2.setZero();                //summed E2    
-        Eigen::Vector3d e3; e3.setZero();                //cross product of e1 and e2
-        size_t N = 0;                               //number of boundary edges if current edge is semiboundary (2 or 3)
-        DefaultTraits::Point p;
-
-        Eigen::Vector3d tri_shape; tri_shape.setZero();  //vector for storing vertex coords in triangle shape optimization    
+        // Hessian, c vector and k for final error calculation
+        // (and possibly for calculating remaining constraints)
+        Eigen::Matrix3d Hv, Hb; Hv.setZero(); Hb.setZero();
+        Eigen::Vector3d cv, cb; cv.setZero(); cb.setZero();
+        double kv = 0.0, kb = 0.0;
 
     //-------------------------------------------------------------------------
     // Volume preservation (+volume optimization)
@@ -165,6 +148,7 @@ collapse_priority(const CollapseInfo& _ci)
             typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(vh);
             for (; vf_it.is_valid(); ++vf_it) face_handles.insert(*vf_it);
         }
+
         // calc constraint
         for (const auto& ff : face_handles) {
 
@@ -173,7 +157,6 @@ collapse_priority(const CollapseInfo& _ci)
             typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(ff);
             for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) fv_coords.col(i) = eigenvec_cast(*fv_it);
         
-
             // get face normal and determinant
             Eigen::Vector3d normal = face_normal(fv_coords);
             double determinant = fv_coords.col(0).dot(normal);
@@ -182,33 +165,28 @@ collapse_priority(const CollapseInfo& _ci)
             constraint += normal;
             bside += determinant;
 
-            normals.emplace_back(normal);//??????????????????????????????????????????????????????????????
-
-            // compute Hessian, c and k
             Hv += normal*normal.transpose();
             cv -= determinant*normal;
             kv += determinant*determinant;
-            
         }
         //rescale VertexOptimization variables to match the equation (9)
         Hv /= 18.0; cv /= 18.0; kv /= 18.0;  
-
+       
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
-
     //-------------------------------------------------------------------------
     // Boundary preservation (+boundary optimization)
     //-------------------------------------------------------------------------
         if(v0_is_boundary or v1_is_boundary){
+
             //if edge is boundary, there will be 3 edges needed for constraints calculation (Figure 3), if not, there will be only 2
+            size_t N;
             if (Base::mesh().is_boundary(heh)) N = 3; else N = 2;
             std::vector<HalfedgeHandle> boundary_edges;
 
             if (N == 3) {
                 HalfedgeHandle heh1 = Base::mesh().next_halfedge_handle(heh);
                 HalfedgeHandle heh2 = Base::mesh().prev_halfedge_handle(heh);
-                boundary_edges.emplace_back(heh1); 
-                boundary_edges.emplace_back(heh2); 
-                boundary_edges.emplace_back(heh);
+                for (const auto& hh : {heh1, heh2, heh}) boundary_edges.emplace_back(hh); 
             }
             else {
                 //getting the two boundary edges
@@ -221,13 +199,14 @@ collapse_priority(const CollapseInfo& _ci)
                 for (; vih_it.is_valid(); ++vih_it) if (Base::mesh().is_boundary(*vih_it)) boundary_edges.emplace_back(*vih_it);
             }
 
-            //calculate E1 and E2 for every edge (that is for 2 or 3 edges)
+            Eigen::Matrix3d E1, E2, e1x;  E1.setZero(); E2.setZero(); e1x.setZero();               
+            Eigen::Vector3d e1, e2, e3; e1.setZero(); e2.setZero(); e3.setZero();                     
+
+            //calculate E1 and E2 for every edge (that is, for 2 or 3 edges)
             for (size_t i = 0; i<N; ++i) {
                 HalfedgeHandle hh = boundary_edges[i];        
-                VertexHandle vhto = Base::mesh().to_vertex_handle(hh);           
-                VertexHandle vhfrom = Base::mesh().from_vertex_handle(hh);
-                p = Base::mesh().point(vhfrom);   Eigen::Vector3d coords0  = Eigen::Vector3d(p[0], p[1], p[2]);
-                p = Base::mesh().point(vhto); Eigen::Vector3d coords1  = Eigen::Vector3d(p[0], p[1], p[2]);
+                Eigen::Vector3d coords0 = eigenvec_cast(Base::mesh().from_vertex_handle(hh));
+                Eigen::Vector3d coords1 = eigenvec_cast(Base::mesh().to_vertex_handle(hh));
                 E1.row(i) = coords1-coords0;
                 E2.row(i) = coords1.cross(coords0);
                 e1 += E1.row(i);
@@ -239,7 +218,7 @@ collapse_priority(const CollapseInfo& _ci)
             constraint = e3*(e1.transpose()*e1);   bside = -(e3.transpose()*e3).value();
             if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
             // equation 8
-            constraint = e1.cross(e3);      bside = 0.0;
+            constraint = e1.cross(e3);             bside = 0.0;
             if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);    
 
             //calculate hessian, c and k from values computed at the boundary preservation section
@@ -249,7 +228,7 @@ collapse_priority(const CollapseInfo& _ci)
                 e1x(1,2) = -E1(i,0); e1x(2,0) = -E1(i,1); e1x(2,1) = E1(i,0);
                 Hb += e1x*e1x.transpose();
                 cb += (E1.row(i)).cross(E2.row(i));
-                kb += (E2.row(i)*E2.row(i).transpose()).value();
+                kb += E2.row(i).dot(E2.row(i));
             }
 
             //rescale Boundary Optimization variables to match the equation (10)
@@ -269,6 +248,12 @@ collapse_priority(const CollapseInfo& _ci)
     // Triangle shape optimization
     //-------------------------------------------------------------------------
         if(Base::mesh().property(n_, heh) < 3){
+            //std::cout<<III++<<"\t";
+            std::set<VertexHandle> vertex_handles;
+            Eigen::Matrix3d Hs; Hs.setZero();
+            Eigen::Vector3d cs; cs.setZero();
+            double ks = 0.0;
+
             //insert needed vertices into a set
             for (auto& vh : {_ci.v0, _ci.v1}) {
                 typename Mesh::VertexVertexIter vv_it = Base::mesh().vv_iter(vh);
@@ -277,38 +262,39 @@ collapse_priority(const CollapseInfo& _ci)
             //and erase those, which are not needed
             vertex_handles.erase(_ci.v0);
             vertex_handles.erase(_ci.v1);
+
             //calculate the Hessian and cs
             for (auto& vv : vertex_handles){
-                p = Base::mesh().point(vv); tri_shape  = Eigen::Vector3d(p[0], p[1], p[2]);
+                Eigen::Vector3d tri_shape = eigenvec_cast(vv);
                 Hs(0,0)+=2; Hs(1,1)+=2; Hs(2,2)+=2;   //add identity matrix
                 cs -= 2*tri_shape;
-                ks += 2*(tri_shape.transpose()*tri_shape).value();
+                ks += 2*(tri_shape.dot(tri_shape));
             }
             calc_remaining_constraints(heh, Hs, cs);
         }
-
     //-------------------------------------------------------------------------
     // Calculate edge collapse error
     //-------------------------------------------------------------------------
         if(Base::mesh().property(n_, heh) == 3){
-            //get final vertex position (solve system of equations using inverse matrix)
-            Eigen::Matrix3d A_inv = Base::mesh().property(constraints, heh).inverse();
-            Eigen::Vector3d b = Base::mesh().property(rhs, heh);
-            Eigen::Vector3d V = A_inv*b;
-            //store the vertex position as Point
+
+            // get final vertex position (solve system of equations using inverse matrix) Av = b
+            Eigen::Vector3d V = Base::mesh().property(constraints, heh).inverse()*Base::mesh().property(rhs, heh);
+
+            // store the vertex position as Point
             for (int i = 0; i<3; ++i) Base::mesh().property(ideal_vertex_coords, heh)[i] = V[i];
         
-            //compute volume and boundary cost
+            // compute volume and boundary cost
             double fv = (0.5*(V.transpose()*(Hv*V)) + (cv.transpose()*V)).value() + 0.5*kv;  //volume objective function
             double fb = (0.5*(V.transpose()*(Hb*V)) + (cb.transpose()*V)).value() + 0.5*kb;  //area objective function
-            //calculate final error
-            p = Base::mesh().point(_ci.v0); Eigen::Vector3d v0  = Eigen::Vector3d(p[0], p[1], p[2]);
-            p = Base::mesh().point(_ci.v1); Eigen::Vector3d v1  = Eigen::Vector3d(p[0], p[1], p[2]);
-            double length = (v1-v0).norm();
-            double err = 0.5*(fv + length*length*fb);    // E = lambda*fv + (1-lambda)*L^2*fb
+
+            // calculate edge length
+            double length = (eigenvec_cast(_ci.v1)-eigenvec_cast(_ci.v0)).norm();
+
+            // final error E = lambda*fv + (1-lambda)*L^2*fb
+            double err = 0.5*(fv + length*length*fb);
         
             Base::mesh().property(error_calculated, _ci.v0v1) = true;
-
+        
             return static_cast<float>(err); 
         } 
     }
@@ -319,12 +305,12 @@ collapse_priority(const CollapseInfo& _ci)
 }
 
 //=============================================================================
-//tu se jeste da usetrit cas skladovanim norem a crossp (ale asi ne nejak vyznamne)
+
 template<class DecimaterType>
 bool
 ModLindTurkT<DecimaterType>::
 is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constr)
-{
+{   
     // a1 != null vector
     if(Base::mesh().property(n_, heh) == 0)
         return  !(constr(0) == 0.0 and constr(1) == 0.0 and constr(2) == 0.0);
@@ -337,7 +323,7 @@ is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constr)
     // ((a1 x a2)^T * a3)^2 > (||a1 x a2||*||a3||*sin(alpha))^2
     else if(Base::mesh().property(n_, heh) == 2){
         Eigen::Vector3d crossp =  Base::mesh().property(constraints, heh).row(0).cross(Base::mesh().property(constraints, heh).row(1));
-        return (std::abs((crossp.transpose()*constr).value()) > std::abs((crossp.norm()*constr.norm())*SINALPHA));
+        return (std::abs((crossp.dot(constr))) > std::abs((crossp.norm()*constr.norm())*SINALPHA));
     }
     return false;
 }
@@ -365,9 +351,9 @@ calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hes
     size_t N = 3-n;
 
     //Create identity matrix of a size (3-n, 3)
-    Eigen::MatrixXd I(N, 3);
-    for (size_t i = 2-n, j = 2; i!=0; i--, j--) I(i,j) = 1;
-    
+    Eigen::MatrixXd I(N, 3); I.setZero();
+    for (size_t i = 3-n, j = 2; i!=0;) I(--i,j--) = 1;
+ 
     //Create orthogonal matrix Z
     Eigen::Matrix3d Z = Base::mesh().property(constraints, heh).transpose();
     if(n == 0) Z = Eigen::MatrixXd::Identity(3,3);        //If no constraints so far, create a matrix of standard base vectors
@@ -375,7 +361,7 @@ calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hes
         if (n == 1) {Z(0,1) = Z(1,0); Z(1,1) = -Z(0,0);}  //Add first orthogonal vector
         Z.col(2) = Z.col(0).cross(Z.col(1));              //Add second orthogonal vector
     }
-    
+  
     //compute remaining constraints and b sides        
     auto temp = I*Z.inverse();
     auto constraints = temp*Hessian;

@@ -224,7 +224,8 @@ private:
   double  SINALPHA = std::sin(0.01745329251),
           COSALPHA = std::cos(0.01745329251);
 
-
+bool ahoj = true;
+int III = 1;
   // ------Properties of each halfedge-----------------------------------------
 
 
