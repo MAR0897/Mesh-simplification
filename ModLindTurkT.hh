@@ -134,7 +134,7 @@ public: // inherited
       if (pos != std::string::npos) {
         size_t pos = opts.find(",");
         auto second = opts.substr(0, pos);
-        //if (second.size() != 0) set_lambda(std::stod(second));
+        if (second.size() != 0) set_min_mod(std::stoi(second));
         opts.erase(0, pos+1); 
       }
       //parse 3rd option (alpha - angle to which planes are taken as coplanar)
@@ -219,13 +219,26 @@ private:
    * collapse these edges, the boundary will stay the same.
    */
   bool lock_boundary_edges = false;
+  
 
   // constrait compatibility parameter
   double  SINALPHA = std::sin(0.01745329251),
           COSALPHA = std::cos(0.01745329251);
 
-bool ahoj = true;
-int III = 1;
+  // Defines, how will the module find ideal collapse vertex
+  // SPACE = original LT, searches the whole 3D space
+  // LINE = search restricted to only one line (edge v0v1) (= 2 constraints already given)
+  enum decimation_mode { SPACE = 0, LINE = 1 };
+  decimation_mode mod = SPACE;
+
+  void set_min_mod(const int& mod_) {
+    switch(mod_){
+      case 0: mod = SPACE;break;
+      case 1: mod = LINE; break;
+      default:mod = SPACE;break;
+    }
+  }
+
   // ------Properties of each halfedge-----------------------------------------
 
 

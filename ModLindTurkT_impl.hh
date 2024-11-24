@@ -171,12 +171,51 @@ collapse_priority(const CollapseInfo& _ci)
         }
         //rescale VertexOptimization variables to match the equation (9)
         Hv /= 18.0; cv /= 18.0; kv /= 18.0;  
+
+        // first add two constraints if the mode LINE is active
+        if (mod == LINE) {
+
+            Eigen::Vector3d a1, a2; a1.setZero(); a2.setZero();
+            double b1 = 0.0, b2 = 0.0;
+
+            double dx = _ci.p1[0] - _ci.p0[0];
+            double dy = _ci.p1[1] - _ci.p0[1];
+            double dz = _ci.p1[2] - _ci.p0[2];
+            Eigen::Vector3d A = eigenvec_cast(_ci.v0);
+
+            if (dx == 0.0) {
+                a1 = Eigen::Vector3d{1.0,0.0,0.0};
+                if (dy == 0.0) a2 = Eigen::Vector3d{0.0,1.0,0.0};
+                else if (dz == 0.0) a2 = Eigen::Vector3d{0.0,0.0,1.0};
+                else a2 = Eigen::Vector3d{0.0, -dz, dy};
+            }
+            else if (dy == 0.0){
+                a1 = Eigen::Vector3d{0.0,1.0,0.0};
+                if (dz == 0.0) a2 = Eigen::Vector3d{0.0,0.0,1.0};
+                else a2 = Eigen::Vector3d{-dz, 0.0, dx};
+            }
+            else if (dz == 0.0) { a1 = Eigen::Vector3d{0.0,0.0,1.0}; a2 = Eigen::Vector3d{-dy, dx, 0.0}; }
+            else { a1 = Eigen::Vector3d{-dz, 0.0, dx}; a2 = Eigen::Vector3d{-dy, dx, 0.0}; }
+
+            b1 = a1.dot(A);
+            b2 = a2.dot(A);
+
+            if(is_alpha_compatible(heh, a1)) add_constraint(heh, a1, b1);
+            if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
+            else {  // if dx is too small, the two constraints are not alpha compatible, 
+                    // so we need to create one without dx coordinate
+                a2 = Eigen::Vector3d{0.0, -dz, dy};
+                b2 = a2.dot(A);
+                if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
+            }
+            
+        }
        
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
     //-------------------------------------------------------------------------
     // Boundary preservation (+boundary optimization)
     //-------------------------------------------------------------------------
-        if(v0_is_boundary or v1_is_boundary){
+        if((Base::mesh().property(n_, heh) < 3) and (v0_is_boundary or v1_is_boundary)){
 
             //if edge is boundary, there will be 3 edges needed for constraints calculation (Figure 3), if not, there will be only 2
             size_t N;
@@ -228,7 +267,7 @@ collapse_priority(const CollapseInfo& _ci)
                 e1x(1,2) = -E1(i,0); e1x(2,0) = -E1(i,1); e1x(2,1) = E1(i,0);
                 Hb += e1x*e1x.transpose();
                 cb += (E1.row(i)).cross(E2.row(i));
-                kb += E2.row(i).dot(E2.row(i));
+                kb += (E2.row(i)).dot(E2.row(i));
             }
 
             //rescale Boundary Optimization variables to match the equation (10)
@@ -364,6 +403,7 @@ calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hes
   
     //compute remaining constraints and b sides        
     auto temp = I*Z.inverse();
+    //auto temp = (Z.inverse()).block(n-1, 0, N, 3);
     auto constraints = temp*Hessian;
     auto bsides = -temp*c;
     
