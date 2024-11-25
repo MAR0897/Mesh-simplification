@@ -82,6 +82,7 @@ public:
     Base::mesh().add_property(constraints);
     Base::mesh().add_property(rhs);
     Base::mesh().add_property(ideal_vertex_coords);
+    Base::mesh().add_property(FProps);
   }
   
   virtual ~ModLindTurkT()
@@ -92,6 +93,7 @@ public:
     Base::mesh().remove_property(constraints);
     Base::mesh().remove_property(rhs);
     Base::mesh().remove_property(ideal_vertex_coords);
+    Base::mesh().remove_property(FProps);
   }
 
 
@@ -112,6 +114,14 @@ public: // inherited
   virtual void preprocess_collapse(const CollapseInfo& _ci) override {
     Base::mesh().set_point(_ci.v1, Base::mesh().property(ideal_vertex_coords, _ci.v0v1));}
   
+  /** \brief Recalculate face normals of changed faces (neighbors of v1)
+   */
+  virtual void postprocess_collapse(const CollapseInfo& _ci) override {
+    
+    typename Mesh::VertexFaceIter vf_it = Base::mesh().vf_iter(_ci.v1);
+    for (; vf_it.is_valid(); ++vf_it) calc_face_normal_and_det(*vf_it);
+  }
+
 
   void set_opts(std::string opts)
   {
@@ -195,18 +205,14 @@ private:
                                   const Eigen::Matrix3d& Hessian, 
                                   const Eigen::Vector3d& c);
 
+  /** \brief Calculates face normal and determinant of a matrix
+   *  determined by 3 face vertices (columns).
+   */
+  void calc_face_normal_and_det(const FaceHandle& fh);
 
   inline Eigen::Vector3d eigenvec_cast(const VertexHandle& v) {
-
     DefaultTraits::Point p = Base::mesh().point(v);
     return Eigen::Vector3d(p[0], p[1], p[2]);
-  }
-
-  inline Eigen::Vector3d face_normal(const Eigen::Matrix3d& fv_coords) {
-
-    Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
-    Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
-    return AB.cross(AC);
   }
 
 
@@ -275,6 +281,17 @@ private:
    * solved using: v = A^(-1) * b
    */
   HPropHandleT<DefaultTraits::Point> ideal_vertex_coords;
+
+  struct FaceProps {
+
+    double det;                         // determinant of vertices of the face
+    double det2;                        // determinant^2
+    Eigen::Vector3d face_normal;        // classic face normal
+    Eigen::Vector3d det_dot_normal;     // determinant*normal
+    Eigen::Matrix3d face_normal_matrix; // normal*normal^T
+  };
+
+  FPropHandleT<FaceProps> FProps;
 };
 
 //=============================================================================

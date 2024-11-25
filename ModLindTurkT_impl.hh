@@ -70,6 +70,7 @@ initialize()
     if (!constraints.is_valid()) Base::mesh().add_property(constraints);
     if (!rhs.is_valid()) Base::mesh().add_property(rhs);
     if (!ideal_vertex_coords.is_valid()) Base::mesh().add_property(ideal_vertex_coords);
+    if (!FProps.is_valid()) Base::mesh().add_property(FProps);
     
 
     typename Mesh::HalfedgeIter he_it = Base::mesh().halfedges_begin(),
@@ -107,6 +108,12 @@ initialize()
             }
         }
     }
+
+    // calculate face normals and store them
+    typename Mesh::FaceIter f_it = Base::mesh().faces_begin(),
+                            f_end = Base::mesh().faces_end();
+
+    for (; f_it != f_end; ++f_it) calc_face_normal_and_det(*f_it);
 }
 
 //=============================================================================
@@ -142,7 +149,7 @@ collapse_priority(const CollapseInfo& _ci)
         // (and possibly for calculating remaining constraints)
         Eigen::Matrix3d Hv, Hb; Hv.setZero();
         Eigen::Vector3d cv, cb; cv.setZero();
-        double kv = 0.0, kb;
+        double kv = 0.0, kb = 0.0;
 
     //-------------------------------------------------------------------------
     // 0,5. Adding first two constraints if decimation mode is LINE
@@ -201,27 +208,17 @@ collapse_priority(const CollapseInfo& _ci)
             for (; vf_it.is_valid(); ++vf_it) face_handles.insert(*vf_it);
         }
 
-        // calc constraint
+        // calc constraint and Vertex Optimization variables
         for (const auto& ff : face_handles) {
-
-            //coords of the 3 vertices of current face
-            Eigen::Matrix3d fv_coords;
-            typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(ff);
-            for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i) fv_coords.col(i) = eigenvec_cast(*fv_it);
-        
-            // get face normal and determinant
-            Eigen::Vector3d normal = face_normal(fv_coords);
-            double determinant = fv_coords.col(0).dot(normal);
             
-            // add to constraint and rhs
-            constraint += normal;
-            bside += determinant;
+            constraint += Base::mesh().property(FProps, ff).face_normal;
+            bside += Base::mesh().property(FProps, ff).det;
 
-            Hv += normal*normal.transpose();
-            cv -= determinant*normal;
-            kv += determinant*determinant;
+            Hv += Base::mesh().property(FProps, ff).face_normal_matrix;
+            cv -= Base::mesh().property(FProps, ff).det_dot_normal;
+            kv += Base::mesh().property(FProps, ff).det2;
         }
-        //rescale VertexOptimization variables to match the equation (9)
+        //rescale Vertex Optimization variables to match the equation (9)
         Hv /= 18.0; cv /= 18.0; kv /= 36.0;  
        
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
@@ -371,6 +368,30 @@ collapse_priority(const CollapseInfo& _ci)
     // if 2 or less contraints were found, we won't collapse this edge
     // (or if the halfedge was locked, or its opposite has already calculated error)
     return FLT_MAX;
+}
+
+//=============================================================================
+
+template<class DecimaterType>
+void
+ModLindTurkT<DecimaterType>::
+calc_face_normal_and_det(const FaceHandle& fh) 
+{
+    Eigen::Matrix3d fv_coords;
+    typename Mesh::FaceVertexIter fv_it = Base::mesh().fv_iter(fh);
+    for (size_t i = 0; fv_it.is_valid(); ++fv_it, ++i)
+        fv_coords.col(i) = eigenvec_cast(*fv_it);
+
+    Eigen::Vector3d AB = fv_coords.col(1)-fv_coords.col(0);
+    Eigen::Vector3d AC = fv_coords.col(2)-fv_coords.col(0);
+    Eigen::Vector3d normal = AB.cross(AC);
+    double determinant = fv_coords.col(0).dot(normal);
+    
+    Base::mesh().property(FProps, fh).face_normal = normal;
+    Base::mesh().property(FProps, fh).det = determinant;
+    Base::mesh().property(FProps, fh).det2 = determinant*determinant;
+    Base::mesh().property(FProps, fh).det_dot_normal = determinant*normal;
+    Base::mesh().property(FProps, fh).face_normal_matrix = normal*normal.transpose();
 }
 
 //=============================================================================
