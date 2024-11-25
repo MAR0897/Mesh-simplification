@@ -85,27 +85,25 @@ initialize()
   if (lock_boundary_edges) {
     typename Mesh::HalfedgeIter he_it = Base::mesh().halfedges_begin(),
                                 he_end = Base::mesh().halfedges_end();
-      for (; he_it != he_end; ++he_it) {
+    for (; he_it != he_end; ++he_it) {
 
-          //no error was calculated yet
-          Base::mesh().property(error_calculated, *he_it) = false;
+      //no error was calculated yet
+      Base::mesh().property(error_calculated, *he_it) = false;
 
-          if (Base::mesh().is_boundary(*he_it)) {
-              typename Mesh::VertexHandle vh1 = Base::mesh().to_vertex_handle(*he_it),
-                                          vh2 = Base::mesh().from_vertex_handle(*he_it);
-              typename Mesh::VertexOHalfedgeIter  voh_it1 = Base::mesh().voh_iter(vh1),
-                                                  voh_it2 = Base::mesh().voh_iter(vh2);
-              typename Mesh::VertexIHalfedgeIter  vih_it1 = Base::mesh().vih_iter(vh1),
-                                                  vih_it2 = Base::mesh().vih_iter(vh2);
-              for (; voh_it1.is_valid(); ++voh_it1) Base::mesh().property(is_locked, *voh_it1) = true;
-              for (; voh_it2.is_valid(); ++voh_it2) Base::mesh().property(is_locked, *voh_it2) = true;
-              for (; vih_it1.is_valid(); ++vih_it1) Base::mesh().property(is_locked, *vih_it1) = true;
-              for (; vih_it2.is_valid(); ++vih_it2) Base::mesh().property(is_locked, *vih_it2) = true;
-          }
+      if (Base::mesh().is_boundary(*he_it)) {
+        typename Mesh::VertexHandle vh1 = Base::mesh().to_vertex_handle(*he_it),
+                                    vh2 = Base::mesh().from_vertex_handle(*he_it);
+        typename Mesh::VertexOHalfedgeIter  voh_it1 = Base::mesh().voh_iter(vh1),
+                                            voh_it2 = Base::mesh().voh_iter(vh2);
+        typename Mesh::VertexIHalfedgeIter  vih_it1 = Base::mesh().vih_iter(vh1),
+                                            vih_it2 = Base::mesh().vih_iter(vh2);
+        for (; voh_it1.is_valid(); ++voh_it1) Base::mesh().property(is_locked, *voh_it1) = true;
+        for (; voh_it2.is_valid(); ++voh_it2) Base::mesh().property(is_locked, *voh_it2) = true;
+        for (; vih_it1.is_valid(); ++vih_it1) Base::mesh().property(is_locked, *vih_it1) = true;
+        for (; vih_it2.is_valid(); ++vih_it2) Base::mesh().property(is_locked, *vih_it2) = true;
       }
+    }
   }
-
-  std::cout<<"Options: "<<"\n\t"<<"Boundary locked? "<<std::boolalpha<<lock_boundary_edges<<std::endl;
 
   // clear quadrics
   typename Mesh::VertexIter  v_it  = Base::mesh().vertices_begin(),
@@ -168,7 +166,7 @@ collapse_priority(const CollapseInfo& _ci)
   {
     using namespace OpenMesh;
 
-    //process only not-locked edges and those edges, which doesnt have computed error yet
+    //process only not-locked edges and those edges, which dont have computed error yet
     if (!Base::mesh().property(is_locked, _ci.v0v1) and !Base::mesh().property(error_calculated, _ci.v1v0)) {
 
       typedef Geometry::QuadricT<double> Q;
@@ -179,10 +177,10 @@ collapse_priority(const CollapseInfo& _ci)
        // final edge error
       double err;
       
-      //=============================================================
+      //=======================================================================
 
       //choose a perfect spot for vertex v (calculate ideal coords)
-      if (min_mod == 3) { // look for the ideal vertex anywhere in the 3D space
+      if (mod == SPACE) {
       
         Eigen::Matrix4d V;        V.setZero();
         Eigen::Vector4d v_coords; v_coords.setZero();
@@ -198,9 +196,9 @@ collapse_priority(const CollapseInfo& _ci)
         err = compute_error(q, std::move(v_coords[0]), std::move(v_coords[1]), std::move(v_coords[2]));
       }
 
-      //--------------------------------------------------------
+      //-----------------------------------------------------------------------
 
-      else if (min_mod == 2) { // look for the ideal vertex only on the line determined by v0 and v1
+      else if (mod == LINE) {
                
         double dx = _ci.p1[0] - _ci.p0[0];
         double dy = _ci.p1[1] - _ci.p0[1];
@@ -224,10 +222,10 @@ collapse_priority(const CollapseInfo& _ci)
         err = compute_error(q, std::move(v_coords[0]), std::move(v_coords[1]), std::move(v_coords[2]));        
       }
 
-      //--------------------------------------------------------
+      //-----------------------------------------------------------------------
 
-      else if (min_mod == 1) { // calculate the error only for v0, v1 and midpoint
-               
+      else if (mod == POINTS) { 
+
         double midp[3] = {(_ci.p0[0]+_ci.p1[0])/2.0, (_ci.p0[1]+_ci.p1[1])/2.0, (_ci.p0[2]+_ci.p1[2])/2.0};
         double midpp[3];
         for (size_t j = 0; j<3; ++j) midpp[j] = midp[j];
@@ -250,9 +248,9 @@ collapse_priority(const CollapseInfo& _ci)
         } 
       }
 
-      //--------------------------------------------------------
+      //-----------------------------------------------------------------------
 
-      else if (min_mod == 0) { // use original OpenMesh implementation, which calculates error only for v0
+      else if (mod == 0) { // use original OpenMesh implementation, which calculates error only for v0
         
         err = q(_ci.p1);
         //min_ = std::min(err, min_);
@@ -261,14 +259,14 @@ collapse_priority(const CollapseInfo& _ci)
         Base::mesh().property(ideal_vertex_coords, _ci.v0v1) = _ci.p1;
       }
 
-      //--------------------------------------------------------
+      //-----------------------------------------------------------------------
 
       else {
         std::cout<<"Wrong parameter for method of finding ideal vertex in the space, permitted values: 0,1,2,3"<<std::endl;
         return 1;
       }
 
-      if (min_mod != 0) Base::mesh().property(error_calculated, _ci.v0v1) = true;
+      if (mod != 0) Base::mesh().property(error_calculated, _ci.v0v1) = true;
       return float( (err < max_err_) ? err : float( Base::ILLEGAL_COLLAPSE ) );
     }
 
@@ -280,11 +278,14 @@ double
 ModQuadricT<DecimaterType>::
 compute_error(Geometry::QuadricT<double>& q, double&& x, double&& y, double&& z) {
 
-  return x*x*q.a() + y*y*q.e() + z*z*q.h()
+  return /*x*x*q.a() + y*y*q.e() + z*z*q.h()
         + 2*x*y*q.b() + 2*x*z*q.c() + 2*y*z*q.f()
         + 2*x*q.d() + 2*y*q.g() + 2*z*q.i()
-        + q.j();  
-        //v_coords.transpose()*(q*v_coords); but this wont work, cause q is only triangle matrix 
+        + q.j();*/
+        x * (x*q.a() + 2*(y*q.b()+q.d())) + 
+        y * (y*q.e() + 2*(z*q.f()+q.g())) + 
+        z * (z*q.h() + 2*(x*q.c()+q.i())) + q.j();   
+        //v_coords.transpose()*(q*v_coords); but this wont work, cause q is only triangular matrix 
 }
   
 

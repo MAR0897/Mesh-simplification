@@ -143,6 +143,15 @@ public: // inherited
   /// set the percentage of maximum quadric error
   void set_error_tolerance_factor(double _factor) override;
 
+private:
+
+  // Defines how is the ideal collapse vertex being calculated
+  enum decimation_mode {
+    SPACE = 3,      // 3 = original GH (choosing the ideal vertex anywhere from the 3D space)
+    LINE = 2,       // 2 = choosing ideal vertex on line determined by v0 and v1
+    POINTS = 1,     // 1 = choosing ideal vertex at start/end/mid points only;
+    DEFAULT_OP = 0  // 0 = original OpenMesh implementation
+  };
 
 
 public: // specific methods
@@ -172,7 +181,15 @@ public: // specific methods
 
   void set_lock(bool lock) { lock_boundary_edges = lock; }
 
-  void set_min_mod(int mod) { min_mod = mod; }
+  void set_min_mod(int mod_) {
+    switch(mod_){
+      case 0: mod = DEFAULT_OP; break;
+      case 1: mod = POINTS;     break;  
+      case 2: mod = LINE;       break;  
+      case 3: mod = SPACE;      break;
+      default: mod = DEFAULT_OP;
+    }
+   }
 
   void set_opts(std::string opts) {
 
@@ -212,18 +229,46 @@ public: // specific methods
 
 private:
 
-  // maximum quadric error
+   // ------Parameters of the decimating module---------------------------------
+
+
+  /** Parameter for locking all boundary and "semi-boundary" edge (edges with 
+   * only one boundary vertex) to preserve the mesh boundary. If we don't
+   * collapse these edges, the boundary will stay the same.
+   */
   bool lock_boundary_edges = false;
-  // 0 = OpenMesh implementation; 1 = start/end/mid points only;
-  // 2 = line determined by v0 and v1; 3 = original GH (anywhere in 3D space)
-  int min_mod = 0; 
+
+  // maximum quadric error
   double max_err_;
+
+  // Decimation mode parameter 
+  decimation_mode mod = DEFAULT_OP;
+
+  // ------Properties of each halfedge-----------------------------------------
+
+  /** If the halfedge is locked, the error will be automatically FLT_MAX.
+  *  - This property is activated with the parameter "lock_boundary_edges"
+  * -> if set to true, it will set this property to true to every boundary
+  * and "semi-boudary" edges (more concretely their respective halfedges)
+  */
+  HPropHandleT<bool> is_locked;
+
+  /** If the error is already calculated for the opposite halfedge,
+   * no need to calculate it, so let's set it to FLT_MAX
+   * (the error calculating function checks if the opposite halfedge has
+   * it's error calculated: if yes, it sets the error for the current halfedge
+   * to FLT_MAX)
+   */
+  HPropHandleT<bool> error_calculated;
+
+  /** Ideal vertex position after collapse
+   * Solution to equation Av=b
+   * solved using: v = A^(-1) * b
+   */
+  HPropHandleT<DefaultTraits::Point> ideal_vertex_coords;
 
   // this vertex property stores a quadric for each vertex
   VPropHandleT< Geometry::QuadricT<double> >  quadrics_;
-  HPropHandleT<DefaultTraits::Point> ideal_vertex_coords;
-  HPropHandleT<bool> is_locked;
-  HPropHandleT<bool> error_calculated; //check whether the error was already calculated on the opposite halfedge
 };
 
 //=============================================================================
