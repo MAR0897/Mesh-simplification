@@ -158,11 +158,8 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
   typename Mesh::VertexFaceIter vf_it;
   unsigned int n_collapses(0);
 
-  //typedef std::vector<typename Mesh::VertexHandle> Support;
-  //*****************************
-  //ZMENA na std::set
-  typedef std::set<typename Mesh::VertexHandle> Support;
-  //*************************** */
+  typedef std::vector<typename Mesh::VertexHandle> Support;
+  //typedef std::set<typename Mesh::VertexHandle> Support;
   typedef typename Support::iterator SupportIterator;
 
   //Support support(15);
@@ -213,25 +210,11 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
       continue;
 
     // store support (= one ring of *vp)
-    vv_it = mesh_.vv_iter(ci.v0);
-    support.clear();
-    for (; vv_it.is_valid(); ++vv_it) {
-      support.insert(*vv_it);
-    }
-    //********************************************** */
-    //ZMENA - prepocitava se error i u sousedu vrcholu v1
-    vv_it = mesh_.vv_iter(ci.v1);
-    for (; vv_it.is_valid(); ++vv_it) {
-      support.insert(*vv_it);
-    }
-    
-    //pro jistotu odstranime v0
-    for (auto it = support.begin(); it != support.end(); ) {
-        if (*it == ci.v0) it = support.erase(it);
-        else ++it;
-    }
-    //************************************************ */ 
-      
+    // vv_it = mesh_.vv_iter(ci.v0);
+    // support.clear();
+    // for (; vv_it.is_valid(); ++vv_it) {
+    //   support.emplace_back(*vv_it);
+    // }      
 
     // pre-processing
     this->preprocess_collapse(ci);
@@ -252,6 +235,23 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
     // post-process collapse
     this->postprocess_collapse(ci);
 
+
+    /**************************
+     * ZMENA POSUN SEM a jede se od v! (vertexu, ktery zustava, aleaspon u GH se to tak ma delat)
+     */
+    vv_it = mesh_.vv_iter(ci.v1);
+    support.clear();
+    support.emplace_back(ci.v1);
+    for (; vv_it.is_valid(); ++vv_it) {
+      support.emplace_back(*vv_it);
+
+
+      //typename Mesh::VertexVertexIter vvv_it =mesh_.vv_iter(*vv_it);
+      //for (; vvv_it.is_valid(); ++vvv_it) support.insert(*vvv_it);
+    }
+    /************************************ */
+
+
     // update heap (former one ring of decimated vertex)
     for (s_it = support.begin(), s_end = support.end(); s_it != s_end; ++s_it) {
       assert(!mesh_.status(*s_it).deleted());
@@ -266,8 +266,6 @@ size_t DecimaterT<Mesh>::decimate(size_t _n_collapses, bool _only_selected) {
 
   // delete heap
   heap_.reset();
-
-
 
   // DON'T do garbage collection here! It's up to the application.
   return n_collapses;

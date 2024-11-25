@@ -58,7 +58,6 @@ namespace OpenMesh  {
 namespace Decimater {
 //== CLASS DEFINITION =========================================================
 
-
 /** \brief Mesh decimation module computing collapse priority based on 
  *  Memoryless simplification algorithm by Peter Lindstrom and Greg Turk 
  */
@@ -218,8 +217,7 @@ private:
    * only one boundary vertex) to preserve the mesh boundary. If we don't
    * collapse these edges, the boundary will stay the same.
    */
-  bool lock_boundary_edges = false;
-  
+  bool lock_boundary_edges = false;  
 
   // constrait compatibility parameter
   double  SINALPHA = std::sin(0.01745329251),

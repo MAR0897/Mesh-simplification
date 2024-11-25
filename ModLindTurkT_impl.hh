@@ -51,7 +51,7 @@
 //== INCLUDES =================================================================
 
 #include <OpenMesh/Tools/Decimater/ModLindTurkT.hh>
-
+#include <chrono>
 //== NAMESPACE ================================================================
 
 namespace OpenMesh { // BEGIN_NS_OPENMESH
@@ -119,10 +119,14 @@ collapse_priority(const CollapseInfo& _ci)
     // only take not locked halfedge, and halfedges, whose opposite halfedge has not calculated error yet
     if(!Base::mesh().property(is_locked, _ci.v0v1) and !Base::mesh().property(error_calculated, _ci.v1v0)){
 
+    //-------------------------------------------------------------------------
+    // 0. Initializing variables
+    //-------------------------------------------------------------------------
         HalfedgeHandle heh = _ci.v0v1;    //halfedge we are currently calculating error for
 
         bool v0_is_boundary = Base::mesh().is_boundary(_ci.v0);
         bool v1_is_boundary = Base::mesh().is_boundary(_ci.v1);
+        bool is_boundary = (v0_is_boundary or v1_is_boundary); // true for boundary and semi-boundary edges
 
         //set variables to zero
         Base::mesh().property(n_, heh) = 0;                      
@@ -136,12 +140,60 @@ collapse_priority(const CollapseInfo& _ci)
            
         // Hessian, c vector and k for final error calculation
         // (and possibly for calculating remaining constraints)
-        Eigen::Matrix3d Hv, Hb; Hv.setZero(); Hb.setZero();
-        Eigen::Vector3d cv, cb; cv.setZero(); cb.setZero();
-        double kv = 0.0, kb = 0.0;
+        Eigen::Matrix3d Hv, Hb; Hv.setZero();
+        Eigen::Vector3d cv, cb; cv.setZero();
+        double kv = 0.0, kb;
 
     //-------------------------------------------------------------------------
-    // Volume preservation (+volume optimization)
+    // 0,5. Adding first two constraints if decimation mode is LINE
+    //-------------------------------------------------------------------------
+        if (mod == LINE) {
+
+            Eigen::Vector3d a1, a2; a1.setZero(); a2.setZero();
+            double b1 = 0.0, b2 = 0.0;
+
+            double dx = _ci.p1[0] - _ci.p0[0];
+            double dy = _ci.p1[1] - _ci.p0[1];
+            double dz = _ci.p1[2] - _ci.p0[2];
+            Eigen::Vector3d A = eigenvec_cast(_ci.v0);
+
+
+            // create perpendicular vectors to halfedge vector
+            if (dx == 0.0) {
+                a1 = {1.0,0.0,0.0};
+                if (dy == 0.0) a2 = {0.0, 1.0, 0.0};
+                else if (dz == 0.0) a2 = {0.0, 0.0, 1.0};
+                else a2 = {0.0, -dz, dy};
+            }
+            else if (dy == 0.0){
+                a1 = {0.0,1.0,0.0};
+                if (dz == 0.0) a2 = {0.0, 0.0, 1.0};
+                else a2 = {-dz, 0.0, dx};
+            }
+            else if (dz == 0.0) { 
+                a1 = {0.0,0.0,1.0}; 
+                a2 = {-dy, dx, 0.0}; 
+            } 
+            else { 
+                a1 = {-dz, 0.0, dx}; 
+                a2 = {-dy, dx, 0.0};
+            }
+
+            b1 = a1.dot(A);
+            b2 = a2.dot(A);
+
+            if(is_alpha_compatible(heh, a1)) add_constraint(heh, a1, b1);
+            if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
+            else {  // if dx is too small, the two constraints are not alpha compatible, 
+                    // so we need to create one without dx coordinate
+                a2 = Eigen::Vector3d{0.0, -dz, dy};
+                b2 = a2.dot(A);
+                if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
+            }
+        }
+
+    //-------------------------------------------------------------------------
+    // 1. Volume preservation (+volume optimization)
     //-------------------------------------------------------------------------
         // plug the faces we need into a set
         for (auto& vh : {_ci.v0, _ci.v1}) {
@@ -170,57 +222,21 @@ collapse_priority(const CollapseInfo& _ci)
             kv += determinant*determinant;
         }
         //rescale VertexOptimization variables to match the equation (9)
-        Hv /= 18.0; cv /= 18.0; kv /= 18.0;  
-
-        // first add two constraints if the mode LINE is active
-        if (mod == LINE) {
-
-            Eigen::Vector3d a1, a2; a1.setZero(); a2.setZero();
-            double b1 = 0.0, b2 = 0.0;
-
-            double dx = _ci.p1[0] - _ci.p0[0];
-            double dy = _ci.p1[1] - _ci.p0[1];
-            double dz = _ci.p1[2] - _ci.p0[2];
-            Eigen::Vector3d A = eigenvec_cast(_ci.v0);
-
-            if (dx == 0.0) {
-                a1 = Eigen::Vector3d{1.0,0.0,0.0};
-                if (dy == 0.0) a2 = Eigen::Vector3d{0.0,1.0,0.0};
-                else if (dz == 0.0) a2 = Eigen::Vector3d{0.0,0.0,1.0};
-                else a2 = Eigen::Vector3d{0.0, -dz, dy};
-            }
-            else if (dy == 0.0){
-                a1 = Eigen::Vector3d{0.0,1.0,0.0};
-                if (dz == 0.0) a2 = Eigen::Vector3d{0.0,0.0,1.0};
-                else a2 = Eigen::Vector3d{-dz, 0.0, dx};
-            }
-            else if (dz == 0.0) { a1 = Eigen::Vector3d{0.0,0.0,1.0}; a2 = Eigen::Vector3d{-dy, dx, 0.0}; }
-            else { a1 = Eigen::Vector3d{-dz, 0.0, dx}; a2 = Eigen::Vector3d{-dy, dx, 0.0}; }
-
-            b1 = a1.dot(A);
-            b2 = a2.dot(A);
-
-            if(is_alpha_compatible(heh, a1)) add_constraint(heh, a1, b1);
-            if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
-            else {  // if dx is too small, the two constraints are not alpha compatible, 
-                    // so we need to create one without dx coordinate
-                a2 = Eigen::Vector3d{0.0, -dz, dy};
-                b2 = a2.dot(A);
-                if(is_alpha_compatible(heh, a2)) add_constraint(heh, a2, b2);
-            }
-            
-        }
+        Hv /= 18.0; cv /= 18.0; kv /= 36.0;  
        
         if(is_alpha_compatible(heh, constraint)) add_constraint(heh, constraint, bside);
     //-------------------------------------------------------------------------
-    // Boundary preservation (+boundary optimization)
+    // 2. Boundary preservation (+boundary optimization)
     //-------------------------------------------------------------------------
-        if((Base::mesh().property(n_, heh) < 3) and (v0_is_boundary or v1_is_boundary)){
+        if(is_boundary and (Base::mesh().property(n_, heh) < 3)){
 
-            //if edge is boundary, there will be 3 edges needed for constraints calculation (Figure 3), if not, there will be only 2
+            // if edge is boundary, there will be 3 edges needed for constraints
+            // calculation (Figure 3), if not, there will be only 2
             size_t N;
             if (Base::mesh().is_boundary(heh)) N = 3; else N = 2;
             std::vector<HalfedgeHandle> boundary_edges;
+
+            Hb.setZero(); cb.setZero(); kb = 0.0;
 
             if (N == 3) {
                 HalfedgeHandle heh1 = Base::mesh().next_halfedge_handle(heh);
@@ -232,10 +248,20 @@ collapse_priority(const CollapseInfo& _ci)
                 typename Mesh::VertexOHalfedgeIter voh_it;
                 typename Mesh::VertexIHalfedgeIter vih_it;
                 //if v0 is boundary, check its outgoing halfedges, if not, check v1 outgoing halfedges
-                if (v0_is_boundary) {voh_it = Base::mesh().voh_iter(_ci.v0); vih_it = Base::mesh().vih_iter(_ci.v0);}
-                else {voh_it = Base::mesh().voh_iter(_ci.v1); vih_it = Base::mesh().vih_iter(_ci.v1);}
-                for (; voh_it.is_valid(); ++voh_it) if (Base::mesh().is_boundary(*voh_it)) boundary_edges.emplace_back(*voh_it);
-                for (; vih_it.is_valid(); ++vih_it) if (Base::mesh().is_boundary(*vih_it)) boundary_edges.emplace_back(*vih_it);
+                if (v0_is_boundary) {
+                    voh_it = Base::mesh().voh_iter(_ci.v0); 
+                    vih_it = Base::mesh().vih_iter(_ci.v0);
+                } 
+                else {
+                    voh_it = Base::mesh().voh_iter(_ci.v1); 
+                    vih_it = Base::mesh().vih_iter(_ci.v1);
+                }
+                for (; voh_it.is_valid(); ++voh_it) 
+                    if (Base::mesh().is_boundary(*voh_it)) 
+                        boundary_edges.emplace_back(*voh_it);
+                for (; vih_it.is_valid(); ++vih_it) 
+                    if (Base::mesh().is_boundary(*vih_it)) 
+                        boundary_edges.emplace_back(*vih_it);
             }
 
             Eigen::Matrix3d E1, E2, e1x;  E1.setZero(); E2.setZero(); e1x.setZero();               
@@ -271,20 +297,20 @@ collapse_priority(const CollapseInfo& _ci)
             }
 
             //rescale Boundary Optimization variables to match the equation (10)
-            Hb *= 0.5; cb *= 0.5; kb *= 0.5;     
+            Hb *= 0.5; cb *= 0.5; kb *= 0.25;     
         }
     //-------------------------------------------------------------------------
-    // Volume optimization
+    // 3. Volume optimization
     //-------------------------------------------------------------------------
         if(Base::mesh().property(n_, heh) < 3) 
             calc_remaining_constraints(heh, Hv, cv);
     //-------------------------------------------------------------------------
-    // Boundary optimization
+    // 4. Boundary optimization
     //-------------------------------------------------------------------------
-        if((v0_is_boundary or v1_is_boundary) and Base::mesh().property(n_, heh) < 3) 
+        if(is_boundary and Base::mesh().property(n_, heh) < 3) 
             calc_remaining_constraints(heh, Hb, cb);
     //-------------------------------------------------------------------------
-    // Triangle shape optimization
+    // 5. Triangle shape optimization
     //-------------------------------------------------------------------------
         if(Base::mesh().property(n_, heh) < 3){
             //std::cout<<III++<<"\t";
@@ -312,30 +338,34 @@ collapse_priority(const CollapseInfo& _ci)
             calc_remaining_constraints(heh, Hs, cs);
         }
     //-------------------------------------------------------------------------
-    // Calculate edge collapse error
+    // 6. Calculate edge collapse error
     //-------------------------------------------------------------------------
         if(Base::mesh().property(n_, heh) == 3){
 
             // get final vertex position (solve system of equations using inverse matrix) Av = b
-            Eigen::Vector3d V = Base::mesh().property(constraints, heh).inverse()*Base::mesh().property(rhs, heh);
+            Eigen::Vector3d V = Base::mesh().property(constraints, heh).inverse()*
+                                Base::mesh().property(rhs, heh);
 
             // store the vertex position as Point
             for (int i = 0; i<3; ++i) Base::mesh().property(ideal_vertex_coords, heh)[i] = V[i];
         
             // compute volume and boundary cost
-            double fv = (0.5*(V.transpose()*(Hv*V)) + (cv.transpose()*V)).value() + 0.5*kv;  //volume objective function
-            double fb = (0.5*(V.transpose()*(Hb*V)) + (cb.transpose()*V)).value() + 0.5*kb;  //area objective function
-
-            // calculate edge length
-            double length = (eigenvec_cast(_ci.v1)-eigenvec_cast(_ci.v0)).norm();
-
+            double fv, fb = 0.0;   fv = (0.5*(V.transpose()*(Hv*V)) + (cv.transpose()*V)).value() + kv;   //volume objective function
+            if (is_boundary)       fb = (0.5*(V.transpose()*(Hb*V)) + (cb.transpose()*V)).value() + kb;   //area objective function
+ 
             // final error E = lambda*fv + (1-lambda)*L^2*fb
-            double err = 0.5*(fv + length*length*fb);
+            double err = 0.0;
+            if (fb == 0.0) err = 0.5*fv;
+            else {
+                double length = (eigenvec_cast(_ci.v1)-eigenvec_cast(_ci.v0)).norm();
+                err = 0.5*(fv + length*length*fb);
+            }
         
             Base::mesh().property(error_calculated, _ci.v0v1) = true;
-        
+
             return static_cast<float>(err); 
         } 
+
     }
 
     // if 2 or less contraints were found, we won't collapse this edge
@@ -372,7 +402,9 @@ is_alpha_compatible(const HalfedgeHandle& heh, const Eigen::Vector3d& constr)
 template<class DecimaterType>
 void
 ModLindTurkT<DecimaterType>::
-add_constraint(const HalfedgeHandle& heh, const Eigen::Vector3d& constr, const double& rhs_)
+add_constraint( const HalfedgeHandle& heh, 
+                const Eigen::Vector3d& constr, 
+                const double& rhs_)
 {
     Base::mesh().property(constraints, heh).row(Base::mesh().property(n_, heh)) = constr;
     Base::mesh().property(rhs, heh)[Base::mesh().property(n_, heh)] = rhs_;
@@ -384,14 +416,11 @@ add_constraint(const HalfedgeHandle& heh, const Eigen::Vector3d& constr, const d
 template<class DecimaterType>
 void
 ModLindTurkT<DecimaterType>::
-calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hessian, const Eigen::Vector3d& c)
+calc_remaining_constraints( const HalfedgeHandle& heh,
+                            const Eigen::Matrix3d& Hessian, 
+                            const Eigen::Vector3d& c)
 {
     size_t n = Base::mesh().property(n_, heh);
-    size_t N = 3-n;
-
-    //Create identity matrix of a size (3-n, 3)
-    Eigen::MatrixXd I(N, 3); I.setZero();
-    for (size_t i = 3-n, j = 2; i!=0;) I(--i,j--) = 1;
  
     //Create orthogonal matrix Z
     Eigen::Matrix3d Z = Base::mesh().property(constraints, heh).transpose();
@@ -402,8 +431,7 @@ calc_remaining_constraints(const HalfedgeHandle& heh, const Eigen::Matrix3d& Hes
     }
   
     //compute remaining constraints and b sides        
-    auto temp = I*Z.inverse();
-    //auto temp = (Z.inverse()).block(n-1, 0, N, 3);
+    auto temp = (Z.inverse()).block(n, 0, 3-n, 3);
     auto constraints = temp*Hessian;
     auto bsides = -temp*c;
     
