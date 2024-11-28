@@ -12,8 +12,8 @@
 #include <OpenMesh/Core/Utils/vector_cast.hh>
 #include <set>
 
-#include <OpenMesh/Eigen/Dense>
-#include <OpenMesh/Eigen/Sparse>
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <OpenMesh/Spectra/include/Spectra/SymEigsShiftSolver.h>
 #include <OpenMesh/Spectra/include/Spectra/MatOp/SparseSymShiftSolve.h>
 
