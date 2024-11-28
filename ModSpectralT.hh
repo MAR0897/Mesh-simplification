@@ -1,6 +1,6 @@
 //=============================================================================
 //
-//  CLASS ModLindTurkT
+//  CLASS ModSpectralT
 //
 //=============================================================================
 #ifndef OSG_MODSPECTRAL_HH
@@ -71,21 +71,43 @@ public: // inherited
   // Compute error and remaining vertex position for a halfedge
   virtual float collapse_priority(const CollapseInfo& _ci) override;
 	
-  //TO COLLAPSE INFO JE JEN INFO K VYPOCTU ERRORU, NIC SE PODLE TOHO NEKOLABUJE, TAKZE NETREBA NIC VPISOVAT
   //tu posun v1 na pozici p1 pomoci set_point
   virtual void preprocess_collapse(const CollapseInfo& _ci) override;
+
   //update signals and previous error
   virtual void postprocess_collapse(const CollapseInfo& _ci) override;
  
-  void set_eigenvec_n(double _eigenvec_n) { eigenvec_n = _eigenvec_n; }
+  void set_eigenvec_n(const double& _eigenvec_n) { eigenvec_n = _eigenvec_n; }
+
+  void set_lock(bool lock) { lock_boundary_edges = lock; }
+
+  void set_opts(std::string opts) {
+
+    //parse 1st option (lock boundary edges)
+    size_t pos = opts.find(",");
+    bool lock;
+    std::string first = opts.substr(0, pos);            
+    if (first == "true" or first == "false") {
+      std::istringstream(first) >> std::boolalpha >> lock;
+      set_lock(lock);
+    }
+    else if (first.size() == 0) {}
+    else std::cerr << "Invalid first option - either \"true\" or \"false\" required, default value (false) was set." << std::endl;
+
+    if (pos != std::string::npos) {
+      opts.erase(0, pos+1);
+      pos = opts.find(",");
+      std::string first = opts.substr(0, pos);
+      int number = std::stoi(first);
+      if (number > 0) set_eigenvec_n(number);  
+    }
+  }
 
   double calc_cotangent(const HalfedgeHandle& he, const VertexHandle& vh1, const VertexHandle& vh2);
   //inner function, p3 is the vertex where the angle is being computed
   double calc_cotangent_from_points(const Vec3d& p1, const Vec3d& p2, const Vec3d& p3);
 
 private:
-
-  //std::vector<double> errs;
 
   //command line args
   bool lock_boundary_edges = false;
@@ -101,10 +123,11 @@ private:
   //Properties
   struct Props {
     bool is_locked;           //optional lock for boundary and 'semi-boundary' vertices to preserve mesh boundary
-    double alpha;             //collapse polynome minimum
+    bool error_calculated;
+    double alpha;             //collapse polynomial minimum
     Vec3d res_vertex_coords;  //ideal resulting vertex for collapsed edge     
     std::vector<std::pair<VertexHandle, double>> cost_diff; //cost difference for each 1-ring vertex of the KEEP vertex     
-    std::set<FaceHandle> recalc_faces;  //faces to recalculate area and cotangents for
+    //std::set<FaceHandle> recalc_faces;  //faces to recalculate area and cotangents for
   };
 
   HPropHandleT<Props>  SPprops;
