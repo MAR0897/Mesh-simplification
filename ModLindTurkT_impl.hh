@@ -51,7 +51,7 @@
 //== INCLUDES =================================================================
 
 #include <OpenMesh/Tools/Decimater/ModLindTurkT.hh>
-#include <chrono>
+
 //== NAMESPACE ================================================================
 
 namespace OpenMesh { // BEGIN_NS_OPENMESH
