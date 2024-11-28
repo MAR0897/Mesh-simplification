@@ -52,7 +52,7 @@
 #include <OpenMesh/Tools/Decimater/ModBaseT.hh>
 #include <OpenMesh/Core/Utils/Property.hh>
 #include <OpenMesh/Core/Utils/vector_cast.hh>
-#include <OpenMesh/Eigen/Dense>
+#include <Eigen/Dense>
 //== NAMESPACE ================================================================
 namespace OpenMesh  {
 namespace Decimater {
