@@ -39,6 +39,10 @@
  *                                                                           *
  * ========================================================================= */
 
+
+/** \file ModQuadricT.hh
+ */
+
 //=============================================================================
 //
 //  CLASS ModQuadricT
@@ -58,12 +62,10 @@
 #include <OpenMesh/Core/Geometry/QuadricT.hh>
 #include <Eigen/Dense>
 
-
 //== NAMESPACE ================================================================
 
 namespace OpenMesh  {
 namespace Decimater {
-
 
 //== CLASS DEFINITION =========================================================
 
@@ -90,7 +92,7 @@ public:
     : Base(_mesh, false)
   {
     unset_max_err();
-    Base::mesh().add_property( quadrics_ );
+    Base::mesh().add_property(quadrics_);
     Base::mesh().add_property(ideal_vertex_coords);
     Base::mesh().add_property(is_locked);
     Base::mesh().add_property(error_calculated);
@@ -105,6 +107,15 @@ public:
     Base::mesh().remove_property(error_calculated);
   }
 
+private:
+
+  // Defines how is the ideal collapse vertex being calculated
+  enum decimation_mode {
+    SPACE = 3,      // 3 = original GH (choosing the ideal vertex anywhere from the 3D space)
+    LINE = 2,       // 2 = choosing ideal vertex on line determined by v0 and v1
+    POINTS = 1,     // 1 = choosing ideal vertex at start/end/mid points only;
+    DEFAULT_OP = 0  // 0 = original OpenMesh implementation
+  };
 
 public: // inherited
 
@@ -117,41 +128,22 @@ public: // inherited
    *  \see set_max_err()
    */
   virtual float collapse_priority(const CollapseInfo& _ci) override;
-
-  double compute_error(Geometry::QuadricT<double>& q, double&& x, double&& y, double&& z);
   
-  //move remaining vertex to ideal calculated position
+  /// Move remaining vertex to ideal calculated position (mod 0 doesnt need to)
   virtual void preprocess_collapse(const CollapseInfo& _ci)
   {
-      Base::mesh().set_point(_ci.v1, Base::mesh().property(ideal_vertex_coords, _ci.v0v1));
+      if (mod != DEFAULT_OP) Base::mesh().set_point(_ci.v1, Base::mesh().property(ideal_vertex_coords, _ci.v0v1));
   }
   
   /// Post-process halfedge collapse (accumulate quadrics)
   virtual void postprocess_collapse(const CollapseInfo& _ci) override
   {
       Base::mesh().property(quadrics_, _ci.v1) +=
-      Base::mesh().property(quadrics_, _ci.v0);
-
-      //restart the error calculation property
-      /*if (min_mod != 0) {
-        typename Mesh::HalfedgeIter he_it = Base::mesh().halfedges_begin(),
-                                    he_end = Base::mesh().halfedges_end();
-        for (; he_it != he_end; ++he_it) Base::mesh().property(error_calculated, *he_it) = false;
-      }*/
+        Base::mesh().property(quadrics_, _ci.v0);
   }
 
   /// set the percentage of maximum quadric error
   void set_error_tolerance_factor(double _factor) override;
-
-private:
-
-  // Defines how is the ideal collapse vertex being calculated
-  enum decimation_mode {
-    SPACE = 3,      // 3 = original GH (choosing the ideal vertex anywhere from the 3D space)
-    LINE = 2,       // 2 = choosing ideal vertex on line determined by v0 and v1
-    POINTS = 1,     // 1 = choosing ideal vertex at start/end/mid points only;
-    DEFAULT_OP = 0  // 0 = original OpenMesh implementation
-  };
 
 
 public: // specific methods
@@ -179,8 +171,59 @@ public: // specific methods
   /// Return value of max. allowed error.
   double max_err() const { return max_err_; }
 
+  // Parse simplification parameters string
+  void set_opts(const std::string& opts) {
+    
+    std::istringstream str(opts);
+    std::string cut;
+
+    if (std::getline(str, cut, ',')) {
+      // set first parameter (ideal collapse vertex finding mode)
+      int cutn = std::stoi(cut);
+      if (cutn == 0 or cutn == 1 or cutn == 2 or cutn == 3) set_min_mod(cutn);
+      else std::cout << "Incorrect value for error minimalization mode (first parameter), going with 0" << "\n"
+                     << "Permitted values: 0, 1, 2 and 3" << "\n"
+                     << "0 = OpenMesh implementation" << "\n"
+                     << "1 = start/end/mid points only" << "\n"
+                     << "2 = line determined by v0 and v1"<< "\n"
+                     << "3 = original GH (anywhere in 3D space)" << std::endl;
+    }
+    // set second parameter (boundary lock)
+    if (std::getline(str, cut, ',')) set_lock(std::stof(cut));
+    // set third option (max error)
+    if (std::getline(str, cut, ',')) set_max_err(std::stof(cut));
+  }
+
+
+private:
+
+  // ------Private functions---------------------------------------------------
+
+  /** \brief Computes final error from edge quadric and ideal vertex coords
+   */
+  double compute_error(Geometry::QuadricT<double>& q, double&& x, double&& y, double&& z);
+
+
+
+  // ------Parameters of the decimating module---------------------------------
+
+
+  /** Parameter for locking all boundary and "semi-boundary" edge (edges with 
+   * only one boundary vertex) to preserve the mesh boundary. If we don't
+   * collapse these edges, the boundary will stay the same.
+   */
+  bool lock_boundary_edges = false;
+
+  // Sets the 'lock_boundary_edges' variable to true or false
   void set_lock(bool lock) { lock_boundary_edges = lock; }
 
+  // Maximum quadric error
+  double max_err_;
+
+  // Decimation mode default parameter 
+  decimation_mode mod = DEFAULT_OP;
+
+  // Sets the mode for finding ideal vertex coordinates
   void set_min_mod(int mod_) {
     switch(mod_){
       case 0: mod = DEFAULT_OP; break;
@@ -191,60 +234,10 @@ public: // specific methods
     }
    }
 
-  void set_opts(std::string opts) {
 
-    //parse 1st option (lock boundary edges)
-    size_t pos = opts.find(",");
-    bool lock;
-    std::string first = opts.substr(0, pos);            
-    if (first == "true" or first == "false") {
-      std::istringstream(first) >> std::boolalpha >> lock;
-      set_lock(lock);
-    }
-    else if (first.size() == 0) {}
-    else std::cerr << "Invalid first option - either \"true\" or \"false\" required, default value (false) was set." << std::endl;
-
-    if (pos != std::string::npos) {
-      opts.erase(0, pos+1);
-      pos = opts.find(",");
-      std::string first = opts.substr(0, pos);
-      int number = std::stoi(first);
-      if (number == 0 or number == 1 or number == 2 or number == 3) set_min_mod(number);
-      else {
-        std::cout<<"Invalid second option - permitted values: 0, 1, 2, 3\n"<<
-                  "0 = OpenMesh implementation; 1 = start/end/mid points only;\
-                  2 = line determined by v0 and v1; 3 = original GH (anywhere in 3D space)" << std::endl;
-        std::cout<<"Going with original OpenMesh implementation"<<std::endl;
-      }  
-      
-    }
-
-    if (pos != std::string::npos) {
-      opts.erase(0, pos+1);
-      set_max_err(std::stoi(opts));
-    }
-
-  }
-
-
-private:
-
-   // ------Parameters of the decimating module---------------------------------
-
-
-  /** Parameter for locking all boundary and "semi-boundary" edge (edges with 
-   * only one boundary vertex) to preserve the mesh boundary. If we don't
-   * collapse these edges, the boundary will stay the same.
-   */
-  bool lock_boundary_edges = false;
-
-  // maximum quadric error
-  double max_err_;
-
-  // Decimation mode parameter 
-  decimation_mode mod = DEFAULT_OP;
 
   // ------Properties of each halfedge-----------------------------------------
+
 
   /** If the halfedge is locked, the error will be automatically FLT_MAX.
   *  - This property is activated with the parameter "lock_boundary_edges"
