@@ -48,3 +48,10 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
       - pro GH je 0 originální OpenMesh implementace, 1 je vybírání ze 3 bodů, 2 je vybírání z přímky, 3 je přesný GH algoritmus
       - pro LT je 0 vybírání z celého prostoru a 1 ze přímky
 
+
+
+### Eigen a Spectra knihovny CMake include změna
+
+- commandlineDecimater
+- DecimaterGui
+- VDProgMesh/mkbalancedpm
