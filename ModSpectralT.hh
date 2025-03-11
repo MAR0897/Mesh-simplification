@@ -14,8 +14,8 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include <OpenMesh/Spectra/include/Spectra/SymEigsShiftSolver.h>
-#include <OpenMesh/Spectra/include/Spectra/MatOp/SparseSymShiftSolve.h>
+#include <Spectra/SymEigsShiftSolver.h>
+#include <Spectra/MatOp/SparseSymShiftSolve.h>
 
 
 //== NAMESPACE ================================================================
@@ -49,6 +49,7 @@ public:
     Base::mesh().add_property(SPprops);
     Base::mesh().add_property(idx);
     Base::mesh().add_property(local_idx);
+    Base::mesh().add_property(inner);
     Base::mesh().add_property(area);
     Base::mesh().add_property(cotangents);
   }
@@ -58,6 +59,7 @@ public:
     Base::mesh().remove_property(SPprops);
     Base::mesh().remove_property(idx);
     Base::mesh().remove_property(local_idx);
+    Base::mesh().remove_property(inner);
     Base::mesh().remove_property(area);
     Base::mesh().remove_property(cotangents);
   }
@@ -123,17 +125,20 @@ private:
   //Properties
   struct Props {
     bool is_locked;           //optional lock for boundary and 'semi-boundary' vertices to preserve mesh boundary
-    bool error_calculated;
+    bool error_calculated;    //check if error is calculated for given edge so we dont have to calculate it twice
     double alpha;             //collapse polynomial minimum
     Vec3d res_vertex_coords;  //ideal resulting vertex for collapsed edge     
     std::vector<std::pair<VertexHandle, double>> cost_diff; //cost difference for each 1-ring vertex of the KEEP vertex     
     //std::set<FaceHandle> recalc_faces;  //faces to recalculate area and cotangents for
+    double error;
+    double prev_local_cost;
   };
 
   HPropHandleT<Props>  SPprops;
-  VPropHandleT<size_t> idx;
-  VPropHandleT<size_t> local_idx;
-  FPropHandleT<double> area;
+  VPropHandleT<size_t> idx;         //global index of the vertex
+  VPropHandleT<size_t> inner;       //check if the local vertex is in the inner circle (1R) 
+  VPropHandleT<int> local_idx;   //local index of the vertex at every edge error calculation
+  FPropHandleT<double> area;        //face area
   FPropHandleT<std::unordered_map<VertexHandle, double>> cotangents;
 };
 
