@@ -35,11 +35,11 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
     ```
     Např.
     ```
-    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M LT:true,0 -n 30000
+    ./commandlineDecimater -i bunny.obj -o bunnyout.obj -M ML:0,0 -n 30000
     ```
     Simplifikační módy:
    - Garland-Heckber = Q
-   - Lindstrom-Turk = LT
+   - Lindstrom-Turk = ML (Memoryless)
    - spektrální = SP
 
    Parametry:
