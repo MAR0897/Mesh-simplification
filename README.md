@@ -43,10 +43,10 @@ Zde se nacházejí nové nebo pozměněné zdrojové nebo hlavičkové soubory, 
    - spektrální = SP
 
    Parametry:
-   1. Lock parametr zamkne boundary edge, aby hranice meshe zůstala stále stejná. (=true nebo false)
-   2. algoritmus vybírání ideálního collapse vertexu - buď z celého 3D prostoru, nebo z přímky procházející danou hranou, nebo ze 3 bodů (v0,v1,midpoint)
+   1. algoritmus vybírání ideálního collapse vertexu - buď z celého 3D prostoru, nebo z přímky procházející danou hranou, nebo ze 3 bodů (v0,v1,midpoint)
       - pro GH je 0 originální OpenMesh implementace, 1 je vybírání ze 3 bodů, 2 je vybírání z přímky, 3 je přesný GH algoritmus
       - pro LT je 0 vybírání z celého prostoru a 1 ze přímky
+   2. Lock parametr zamkne boundary edge, aby hranice meshe zůstala stále stejná. (=true nebo false)
 
 
 
